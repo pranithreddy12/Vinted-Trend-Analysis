@@ -1,0 +1,101 @@
+rank,term,demand_score,listings,avg_offers,is_seed
+1,stanley,268.5,345,0.1,yes
+2,bottle,96.5,146,0.0,yes
+3,cup,87.5,89,0.2,no
+4,stanley cup,74.0,68,0.3,no
+5,tumbler,54.5,73,0.1,no
+6,water,28.5,48,0.0,no
+7,water bottle,27.5,46,0.0,no
+8,quencher,26.0,33,0.0,no
+9,stanley quencher,19.0,25,0.0,no
+10,stanley tumbler,17.0,16,0.4,no
+11,classic,16.5,20,0.0,no
+12,18l,16.0,18,0.0,no
+13,flowstate,13.5,17,0.0,no
+14,straw,13.5,25,0.0,no
+15,iceflow,13.0,24,0.0,no
+16,holder,13.0,24,0.0,no
+17,stanley bottle,12.5,15,0.0,yes
+18,40oz,12.0,16,0.0,no
+19,bottle holder,10.5,20,0.0,no
+20,classic bottle,10.0,11,0.0,no
+21,stanley iceflow,10.0,18,0.0,no
+22,thermosflasche,9.0,5,0.8,no
+23,stanley classic,9.0,13,0.0,no
+24,dupe,9.0,9,0.0,no
+25,thermoskanne,8.5,6,0.7,no
+26,stanley dupe,8.5,8,0.0,no
+27,flip,8.5,15,0.0,no
+28,rose,8.0,8,0.0,no
+29,nieuw,8.0,10,0.0,no
+30,flowstate tumbler,8.0,12,0.0,no
+31,mug,7.5,9,0.0,no
+32,gourde,7.5,7,0.6,no
+33,flip straw,7.0,12,0.0,no
+34,beige,6.5,9,0.0,no
+35,stanley water,6.5,11,0.0,no
+36,insulated,6.5,12,0.0,no
+37,purple,6.5,12,0.0,no
+38,stanley aladdin,6.0,2,2.0,no
+39,iceflow bottle,6.0,12,0.0,no
+40,isotherme,5.5,4,0.0,no
+41,slim bottle,5.5,6,0.0,no
+42,steel,5.5,11,0.0,no
+43,crochet,5.5,10,0.0,no
+44,legendary,5.0,7,0.0,no
+45,vacuum,5.0,7,0.0,no
+46,bag,5.0,8,0.0,no
+47,cross,4.5,6,0.0,no
+48,18l 40oz,4.5,3,0.0,no
+49,30oz,4.5,4,0.0,no
+50,primark,4.5,3,0.0,no
+51,stainless steel,4.5,9,0.0,no
+52,quencher protour,4.0,2,0.0,no
+53,bottle quencher,4.0,2,0.0,no
+54,protour tumbler,4.0,2,0.0,no
+55,cross bottle,4.0,5,0.0,no
+56,stanley cross,4.0,5,0.0,no
+57,iceflow flip,4.0,6,0.0,no
+58,black,4.0,7,0.0,no
+59,blue,4.0,7,0.0,no
+60,crochet water,4.0,7,0.0,no
+61,becher,4.0,6,0.0,no
+62,all,3.5,5,0.0,no
+63,limited,3.5,7,0.0,no
+64,legendary classic,3.0,3,0.0,no
+65,stanley slim,3.0,3,0.0,no
+66,stanley adventure,3.0,3,0.0,no
+67,bottle nieuw,3.0,4,0.0,no
+68,wasserflasche,3.0,3,0.0,no
+69,travel,3.0,6,0.0,no
+70,tumbler 40oz,3.0,5,0.0,no
+71,stanley all,3.0,4,0.0,no
+72,all day,3.0,4,0.0,no
+73,thermos,3.0,6,0.0,no
+74,grey,3.0,6,0.0,no
+75,aerolight,3.0,6,0.0,no
+76,59l,3.0,5,0.0,no
+77,green,3.0,6,0.0,no
+78,creme,3.0,4,0.0,no
+79,gourde stanley,3.0,2,2.0,no
+80,bottle mug,2.5,2,0.0,no
+81,ash,2.5,2,0.0,no
+82,classic vacuum,2.5,2,0.0,no
+83,frgmt,2.5,2,0.0,no
+84,mini stanley,2.5,2,0.0,no
+85,owala,2.5,2,0.0,no
+86,dupe water,2.5,2,0.0,no
+87,straw tumbler,2.5,4,0.0,no
+88,liter,2.5,4,0.0,no
+89,day slim,2.5,3,0.0,no
+90,89l,2.5,4,0.0,no
+91,weiß,2.5,4,0.0,no
+92,termica,2.5,4,0.0,no
+93,borraccia,2.5,5,0.0,no
+94,lilac,2.5,5,0.0,no
+95,holder bag,2.5,4,0.0,no
+96,set,2.5,5,0.0,no
+97,stanley aerolight,2.5,5,0.0,no
+98,rose quartz,2.0,3,0.0,no
+99,brand,2.0,3,0.0,no
+100,tumbler 30oz,2.0,2,0.0,no

@@ -1,0 +1,15 @@
+# Chrome profiles — contain your logged-in Vinted session (cookies/tokens). NEVER commit.
+vinted_profile/
+vinted-profile/
+
+# Python / tooling caches
+__pycache__/
+.ruff_cache/
+*.pyc
+
+# Logs & backups
+*.log
+*.bak
+
+# Internal planning — contains pricing & client-negotiation strategy. Keep private.
+PROJECT_GOALS.md

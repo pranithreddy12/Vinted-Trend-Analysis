@@ -1,0 +1,190 @@
+🔄 Getting cookies and access token...
+   🔑 Access token: found
+
+🔍 Fetching catalog for: Audemars Piguet x Swatch
+  📄 Page 1: 96 items fetched via requests
+  📄 Page 2: 55 items fetched via requests
+  📄 Page 3: no more items — stopping
+   → 146 items found
+
+📦 Total items to scrape: 146
+
+🚀 Starting multi-threaded extraction (Max 3 parallel tabs) for 146 items...
+  ✅ 1/146 — Swatch x Audemars Piguet Royal Pop  Oc | 0 offers | 9999h | active | ⚠️ Low
+  ✅ 2/146 — AP Swatch orenji hachi new with docume | 0 offers | 4m | active | 👀 Early Watchlist
+  ✅ 3/146 — Swatch X Audemars Piguet | Modelo " Oc | 3 offers | 3m | active | 📈 Growing
+  ✅ 4/146 — Royal pop Audemar piguet x Swatch oren | 0 offers | 4m | active | 👀 Early Watchlist
+  ✅ 5/146 — Audemars piguet X swatch orenji hachi. | 0 offers | 4m | active | 👀 Early Watchlist
+  ✅ 6/146 — Swatch x Audemars Piguet – Royal Pop " | 0 offers | 4m | active | 👀 Early Watchlist
+  ✅ 7/146 — NUEVO Swatch x Audemars Piguet (Royal  | 0 offers | 4m | active | 👀 Early Watchlist
+  ✅ 8/146 — AP x swatch | 0 offers | 4m | active | 👀 Early Watchlist
+  ✅ 9/146 — Sxatch x ap | 0 offers | 11m | active | 👀 Early Watchlist
+  ✅ 10/146 — Swatch x Audemars Piguet Otto Rosso | 0 offers | 11m | active | 👀 Early Watchlist
+  ✅ 11/146 — Swatch x Audemars Piguet Royal Pop "Hu | 0 offers | 15m | active | 👀 Early Watchlist
+  ✅ 12/146 — Swatch X Audemars Piguet | 0 offers | 15m | active | 👀 Early Watchlist
+  ✅ 13/146 — Royal Pop | 0 offers | 15m | active | 👀 Early Watchlist
+  ✅ 14/146 — Audemars Piguet x Swatch | Royal Pop o | 0 offers | 24.0h | active | 👀 Early Watchlist
+  ✅ 15/146 — Audemars Piguet x Swatch blaue atch | 0 offers | 24.0h | active | 👀 Early Watchlist
+  ✅ 16/146 — Swatch x Audemars Piguet White | 0 offers | 24.0h | active | 👀 Early Watchlist
+  ✅ 17/146 — Audemars Piguet x Swatch Royal Pop Hui | 0 offers | 26m | active | 👀 Early Watchlist
+  ✅ 18/146 — Swatch x Audemars Piguet - Blaue Acht | 0 offers | 32m | active | 👀 Early Watchlist
+  ✅ 19/146 — Swatch x Audemars Piguet Royal Pop Ott | 0 offers | 34m | active | 👀 Early Watchlist
+  ✅ 20/146 — Swatch x Audemars Piguet Royal Pop Bla | 0 offers | 36m | active | 👀 Early Watchlist
+  ✅ 21/146 — swatch x audemars piguet royale pop ot | 0 offers | 34m | active | 👀 Early Watchlist
+  ✅ 22/146 — AP x Swatch Royal Pop „Otto Rosso“ - B | 0 offers | 37m | active | 👀 Early Watchlist
+  ✅ 23/146 — AP x Swatch Royal Pop „Otto Rosso“ | 0 offers | 37m | active | 👀 Early Watchlist
+  ✅ 24/146 — Swatch x Audemars Piguet | 0 offers | 38m | active | 👀 Early Watchlist
+  ✅ 25/146 — Royal Pop Green  AP x Swatch | 0 offers | 39m | active | 👀 Early Watchlist
+  ✅ 26/146 — Royal Pop Swatch x Audemars Piguet | 0 offers | 40m | active | 👀 Early Watchlist
+    ⏳ Timeout, retry 1/2 in 6s...
+    ⏳ Timeout, retry 1/2 in 6s...
+    ⏳ Timeout, retry 1/2 in 6s...
+  ✅ 27/146 — Swatch x Audemars Piguet | 0 offers | 41m | active | 👀 Early Watchlist
+  ✅ 28/146 — Royal Pop | 0 offers | 43m | active | 👀 Early Watchlist
+  ✅ 29/146 — Swatch x Audemars Piguet Royal Pop Otg | 0 offers | 42m | active | 👀 Early Watchlist
+  ✅ 30/146 — Montre Audemars Piguet X Swatch | 0 offers | 44m | active | 👀 Early Watchlist
+  ✅ 31/146 — Swatch x Audemars Piguet Royal Pop Och | 0 offers | 44m | active | 👀 Early Watchlist
+  ✅ 32/146 — Swatch x Audemars Piguet Royal Pop Sav | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 33/146 — Royal pop Audemar Piguet X Swatch | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 34/146 — Swatch x Audemars Piguet Bioceramic Ro | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 35/146 — Audemars Piguet x Swatch | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 36/146 — Audemars Piguet x Swatch | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 37/146 — Royal Pop ocho negro | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 38/146 — Swatch x Audemars Piguet Royal Pop Och | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 39/146 — Swatch x AP | 4 offers | 1.0h | active | 📈 Growing
+    ⏳ Timeout, retry 1/2 in 6s...
+    ⏳ Timeout, retry 1/2 in 6s...
+    ⏳ Timeout, retry 1/2 in 6s...
+    ⏳ Timeout, retry 2/2 in 12s...
+  ✅ 40/146 — Audemars Piguet x Swatch Royal Pop Och | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 41/146 — Audemars Piguet x Swatch Royal Pop “Oc | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 42/146 — Swatch x Audemars Piguet Bioceramic Ro | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 43/146 — Royale Pop, Audemars Piguet X Swatch O | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 44/146 — swatch x audemars piguet | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 45/146 — swatch x audemars piguet Royal Pop | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 46/146 — Swatch X Audemars Piquet - Royal Pop | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 47/146 — Swatch x Audemars Piguet Royal Pop otg | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 48/146 — Audemars Piguet x Swatch Colección Roy | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 49/146 — Audemars Piguet x Swatch royal pop | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 50/146 — Audemars piguet x swatch royal pop | 4 offers | 1.0h | active | 📈 Growing
+  ✅ 51/146 — Swatch x Audemars Piguet Royal Pop | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 52/146 — Audemars Piguet X Swatch Royal Pop Mod | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 53/146 — Swatch x Audemars Piguet « Royal Pop » | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 54/146 — Audemars Piguet x Swatch | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 55/146 — Swatch x Audemars Piguet Royal Pop | 3 offers | 1.0h | active | 📈 Growing
+  ✅ 56/146 — Audemars Piguet x Swatch Royal Pop Ore | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 57/146 — AP/Audemars Piguet x SWATCH | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 58/146 — Swatch x Audemars Piguet | 3 offers | 1.0h | active | 📈 Growing
+  ✅ 59/146 — Swatch X audemars Piguet | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 60/146 — Swatch x Audemars Piguet – Otto Rossi | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 61/146 — Swatch x Audemars Piguet / Otto Rosso | 14 offers | 1.0h | active | 🚀 Explosive Early Trend
+  ✅ 62/146 — Swatch x Audemars Piguet | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 63/146 — Audemars Piguet x Swatch AP royal pop  | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 64/146 — Audemars Piguet x Swatch Royal Pop Och | 0 offers | 1.0h | active | 👀 Early Watchlist
+  ✅ 65/146 — Audemars Piguet X swatch collection | 0 offers | 2.0h | active | 👀 Early Watchlist
+  ✅ 66/146 — Royal pop audemars piguet x swatch | 0 offers | 2.0h | active | 👀 Early Watchlist
+  ✅ 67/146 — Audemars Piguet x Swatch – Royal Pop O | 0 offers | 8.0h | active | 👀 Early Watchlist
+  ✅ 68/146 — Swatch x AP Royal Pop disponibile | 0 offers | 8.0h | active | 👀 Early Watchlist
+  ✅ 69/146 — Audemars Piguet x Swatch Royal Pop | 11 offers | 10.0h | active | 🚀 Explosive Early Trend
+  ✅ 70/146 — Swatch X Audemars Piguet Royal Pop | 0 offers | 11.0h | active | 👀 Early Watchlist
+  ✅ 71/146 — Audemars Piguet x Swatch – Royal Pop O | 11 offers | 12.0h | active | 🚀 Explosive Early Trend
+  ✅ 72/146 — Montre Swatch Royal Pop roz | 17 offers | 12.0h | active | 🚀 Explosive Early Trend
+  ✅ 73/146 — Swatch x Audemars Piguet Royal Pop Bla | 6 offers | 12.0h | active | 🔥 Trending
+  ✅ 74/146 — Audemars Piguet x Swatch Royal Pop | 0 offers | 13.0h | active | 👀 Early Watchlist
+  ✅ 75/146 — Swatch x Audemars Piguet Royal Pop – O | 18 offers | 13.0h | active | 🚀 Explosive Early Trend
+  ✅ 76/146 — Swatch X Audemars Piguet Royal Pop | 3 offers | 13.0h | active | 📈 Growing
+  ✅ 77/146 — Swatch x Audemars Piguet Royal Pop | 3 offers | 13.0h | active | 📈 Growing
+  ✅ 78/146 — Swatch x Audemars Piguet Royal Pop Ore | 29 offers | 13.0h | active | 🚀 Explosive Early Trend
+  ✅ 79/146 — Audemars Piguet x Swatch | 5 offers | 13.0h | active | 🔥 Trending
+  ✅ 80/146 — Swatch x Audemars Piguet Royal Pop Ott | 6 offers | 13.0h | active | 🔥 Trending
+  ✅ 81/146 — Royal Pop Otto Rosso Audemars Piguet x | 7 offers | 14.0h | active | 🔥 Trending
+  ✅ 82/146 — Swatch x audemars piguet | 5 offers | 14.0h | active | 🔥 Trending
+  ✅ 83/146 — Swatch royal oak | 3 offers | 14.0h | active | 📈 Growing
+  ✅ 84/146 — Swatch X Audemars Piguet | 0 offers | 15.0h | active | 👀 Early Watchlist
+  ✅ 85/146 — Swatch x Audemars Piguet Otto Rosso | 26 offers | 15.0h | active | 🚀 Explosive Early Trend
+  ✅ 86/146 — AP x Swatch | 3 offers | 15.0h | active | 📈 Growing
+  ✅ 87/146 — Audemars Piguet x Swatch Royal pop Nue | 4 offers | 15.0h | active | 📈 Growing
+  ✅ 88/146 — Audemars Piguet X Swatch | 0 offers | 24.0h | active | 👀 Early Watchlist
+  ✅ 89/146 — Swatch pop x audemars piguet | 15 offers | 16.0h | active | 🚀 Explosive Early Trend
+  ✅ 90/146 — Swatch x Audemars Piguet | 17 offers | 16.0h | active | 🚀 Explosive Early Trend
+  ✅ 91/146 — Swatch x Audemars Piguet | 10 offers | 16.0h | active | 🔥 Trending
+  ✅ 92/146 — Audemars Piguet x Swatch “Royal Pop –  | 0 offers | 16.0h | active | 👀 Early Watchlist
+  ✅ 93/146 — Swatch x Audemars Piguet Royal Pop Ott | 6 offers | 16.0h | active | 🔥 Trending
+  ✅ 94/146 — Swatch x Audemars Piguet Royal Pop | 10 offers | 16.0h | active | 🔥 Trending
+  ✅ 95/146 — Swatch x Royal Pop Black | 4 offers | 16.0h | active | 📈 Growing
+  ✅ 96/146 — Royal Pop AP x Swatch | 9 offers | 16.0h | active | 🔥 Trending
+  ✅ 97/146 — Swatch x Audemars Piguet Royal Pop Och | 31 offers | 16.0h | active | 🚀 Explosive Early Trend
+  ✅ 98/146 — Swatch royal pop x audemars piquet | 58 offers | 16.0h | active | 🚀 Explosive Early Trend
+  ✅ 99/146 — Swatch x Audemars Piguet Royal Pop Och | 55 offers | 16.0h | active | 🚀 Explosive Early Trend
+  ✅ 100/146 — Montre Swatch x Audemars Piguet Rose | 14 offers | 17.0h | active | 🚀 Explosive Early Trend
+  ✅ 101/146 — Audemars Piguet X swatch Otto rosso | 21 offers | 17.0h | active | 🚀 Explosive Early Trend
+  ✅ 102/146 — Swatch X Audemars Piguet | 51 offers | 17.0h | active | 🚀 Explosive Early Trend
+  ✅ 103/146 — Swatch X Audemars Piguet Royal Pop Ott | 8 offers | 17.0h | active | 🔥 Trending
+  ✅ 104/146 — Montre swatch x audemars AP | 0 offers | 24.0h | active | 👀 Early Watchlist
+  ✅ 105/146 — Audemars Piguet X Swatch royal pop | 0 offers | 17.0h | active | 👀 Early Watchlist
+  ✅ 106/146 — Royal pop Audemars Piguet x Swatch | 15 offers | 17.0h | active | 🚀 Explosive Early Trend
+  ✅ 107/146 — swatch x audemars piguet | 26 offers | 17.0h | active | 🚀 Explosive Early Trend
+  ✅ 108/146 — Montre Swatch X Audemars Piguet | 12 offers | 17.0h | active | 🚀 Explosive Early Trend
+  ✅ 109/146 — swatch x audemars piguet royal pop | 7 offers | 17.0h | active | 🔥 Trending
+  ✅ 110/146 — Swatch x Audemars Piguet Royal Pop Ott | 5 offers | 17.0h | active | 🔥 Trending
+  ✅ 111/146 — Swatch x Audemars Piquet Royal Pop sig | 15 offers | 17.0h | active | 🚀 Explosive Early Trend
+  ✅ 112/146 — Swatch x Audemars Piguet Orenji Hachi | 0 offers | 17.0h | active | 👀 Early Watchlist
+  ✅ 113/146 — Swatch x Audemars Piguet Royal Pop "Gr | 10 offers | 17.0h | active | 🔥 Trending
+  ✅ 114/146 — Audemars piguet X swatch | 34 offers | 17.0h | active | 🚀 Explosive Early Trend
+  ✅ 115/146 — Montre royal pop rose rouge | 7 offers | 17.0h | active | 🔥 Trending
+  ✅ 116/146 — Swatch X Audemars piguet Royal pop | 0 offers | 17.0h | active | 👀 Early Watchlist
+  ✅ 117/146 — Swatch X audemars piguet | 0 offers | 17.0h | active | 👀 Early Watchlist
+  ✅ 118/146 — Swatch x Audemars Piguet Royal Pop Och | 18 offers | 17.0h | active | 🚀 Explosive Early Trend
+  ✅ 119/146 — Swatch x Audemars Piguet Royal Pop Och | 94 offers | 17.0h | active | 🚀 Explosive Early Trend
+  ✅ 120/146 — Royal Pop - Swatch X Audemars Piguet | 9 offers | 17.0h | active | 🔥 Trending
+  ✅ 121/146 — Royal Pop Modello Huit Blanc | 0 offers | 17.0h | sold | 👀 Early Watchlist
+  ✅ 122/146 — swatch x audemars piguet | 7 offers | 17.0h | active | 🔥 Trending
+  ✅ 123/146 — Royal pop Audemars piguet x Swatch | 17 offers | 18.0h | active | 🚀 Explosive Early Trend
+  ✅ 124/146 — Montre swatch x AP | 4 offers | 18.0h | active | 📈 Growing
+  ✅ 125/146 — Royal pop Huit Blanc | 14 offers | 18.0h | active | 🚀 Explosive Early Trend
+  ✅ 126/146 — Swatch X Audemars Piguet | 10 offers | 18.0h | active | 🔥 Trending
+  ✅ 127/146 — Audemars piguet x swatch | 24 offers | 18.0h | active | 🚀 Explosive Early Trend
+  ✅ 128/146 — Swatch X AP Royal Pop Ocho Black | 65 offers | 18.0h | active | 🚀 Explosive Early Trend
+  ✅ 129/146 — Audemars Piguet  X Swatch | 30 offers | 18.0h | active | 🚀 Explosive Early Trend
+  ✅ 130/146 — Swatch x Audemars Piguet | 11 offers | 18.0h | active | 🚀 Explosive Early Trend
+  ✅ 131/146 — Audemars Piguet x Swatch Royal Pop | 0 offers | 18.0h | active | 👀 Early Watchlist
+  ✅ 132/146 — Audemars Piguet x Swatch | 16 offers | 18.0h | active | 🚀 Explosive Early Trend
+  ✅ 133/146 — Audemars piguet x Swatch | 20 offers | 18.0h | active | 🚀 Explosive Early Trend
+  ✅ 134/146 — Swatch x Audemars Piguet Bioceramic Ro | 93 offers | 19.0h | active | 🚀 Explosive Early Trend
+  ✅ 135/146 — Swatch x Audemars Piguet Bioceramic Ro | 10 offers | 19.0h | active | 🔥 Trending
+  ✅ 136/146 — Audemars Piguet x Swatch "Ocho Negro" | 11 offers | 19.0h | active | 🚀 Explosive Early Trend
+  ✅ 137/146 — Swatch x Audemars Piguet “Royal Pop” | 9 offers | 19.0h | active | 🔥 Trending
+  ✅ 138/146 — Swatch x Audemars Piguet Royal Pop | 25 offers | 19.0h | active | 🚀 Explosive Early Trend
+  ✅ 139/146 — Swatch × AP Royal Pop | 0 offers | 19.0h | active | 👀 Early Watchlist
+  ✅ 140/146 — Audemars piguet x Swatch | 13 offers | 19.0h | active | 🚀 Explosive Early Trend
+  ✅ 141/146 — Lotto Swatch x Audemars Piguet | 22 offers | 19.0h | active | 🚀 Explosive Early Trend
+  ✅ 142/146 — Swatch X Audemars Pigurt Otto Rosso in | 59 offers | 19.0h | active | 🚀 Explosive Early Trend
+  ✅ 143/146 — Swatch x Audemars Piguet Royal Pop otg | 168 offers | 20.0h | active | 🚀 Explosive Early Trend
+  ✅ 144/146 — Swatch x Audemars Piguet Royal Pop | 61 offers | 21.0h | active | 🚀 Explosive Early Trend
+  ✅ 145/146 — Royal pop | 112 offers | 24.0h | active | 🚀 Explosive Early Trend
+  ✅ 146/146 — Swatch x Omega Mission to Earthphase M | 3 offers | 24.0h | active | 📈 Growing
+
+📊 Finished: 146/146 scraped, 0 permanently skipped.
+
+============================================================
+📊 NICHE OPPORTUNITY ANALYSIS (Velocity-Weighted)
+============================================================
+
+  Keyword:          Audemars Piguet x Swatch
+  Competition:      146 listings
+  Avg Offers:       10.6
+  Avg Likes:        120.8
+  Avg Price:        €1682.8
+  Fast Sales:       0
+  Explosive (<24h): 57 items with 5+ offers
+  ───────────────────────────────────
+  Competition:      3/4
+  Offer Intensity:  3/4
+  Early Velocity:   4/4
+  Saturation:       ⚠️  138 listings <24h (saturated)
+  ───────────────────────────────────
+  Niche Score:      9/12
+  Verdict:          🔥 Strong Potential
+============================================================
+
+🎉 Done! Results saved to vinted_trends.csv, vinted_trends_raw.csv, and vinted_summary.csv
