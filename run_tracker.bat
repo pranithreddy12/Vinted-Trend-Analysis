@@ -15,7 +15,7 @@ set VINTED_AUTOMATED=1
 set VINTED_TRACK_WORKERS=2
 
 REM Confirm the logged-in debug-Chrome is up; if not, stop (don't corrupt anything).
-powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3 ^| Out-Null; exit 0 } catch { exit 1 }"
+powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3; exit 0 } catch { exit 1 }"
 if errorlevel 1 (
   echo [%date% %time%] ERROR: Chrome is not running with the debugging port.
   echo    Run start_scraper.bat, log into Vinted, and LEAVE Chrome open. Then retry.
