@@ -1,0 +1,4 @@
+# Products to track continuously — one keyword per line.
+# Lines starting with # and blank lines are ignored.
+# Edit this list to match the products/categories you want monitored.
+stanley quencher

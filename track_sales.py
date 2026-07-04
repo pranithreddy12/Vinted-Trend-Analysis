@@ -819,6 +819,12 @@ def main():
         page = fr.get_or_create_page(context, "https://www.vinted.fr")
         time.sleep(3)
         if page.query_selector("[data-testid='header--login-button']"):
+            if os.environ.get("VINTED_AUTOMATED"):
+                # Unattended run: never block on input(). Exit so the scheduler
+                # can flag it; a human re-logs the profile in when convenient.
+                print("⚠️  Not logged in and running automated — exiting. Re-login "
+                      "the Vinted profile; the next scheduled run will resume.")
+                sys.exit(2)
             print("⚠️  Not logged in — log in, then press ENTER.")
             input()
         print("🔄 Getting cookies and access token...")
@@ -848,7 +854,7 @@ def main():
     print(f"\n💾 Tracking state saved: {path}")
 
     variants, _ = variant_analysis(tracking)
-    vpath = save_variant_report(variants)
+    vpath = save_variant_report(variants, f"variant_report_{_slug(keyword)}.csv")
     if vpath:
         print(f"💾 Variant report saved: {vpath} ({len(variants)} variants)")
     save_variant_snapshot(variants)  # enables the trend column on the next run
