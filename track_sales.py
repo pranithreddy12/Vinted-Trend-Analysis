@@ -815,7 +815,15 @@ def main():
     path = os.path.join(TRACK_DIR, f"{_slug(keyword)}.csv")
 
     with sync_playwright() as p:
-        _, context = fr.connect(p)
+        try:
+            _, context = fr.connect(p)
+        except Exception as e:
+            print(
+                "⚠️  Could not connect to Chrome on port 9222. Chrome must be running "
+                "with --remote-debugging-port=9222 and logged into Vinted (see "
+                f"AUTOMATION.md). Skipping this run. [{type(e).__name__}]"
+            )
+            sys.exit(4)
         page = fr.get_or_create_page(context, "https://www.vinted.fr")
         time.sleep(3)
         if page.query_selector("[data-testid='header--login-button']"):
