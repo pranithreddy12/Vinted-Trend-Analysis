@@ -843,6 +843,23 @@ def main():
     now = datetime.now(timezone.utc)
     tracking = load_tracking(path)
     first_run = len(tracking) == 0
+
+    # SAFETY GUARD — a failed/partial catalog fetch (401 auth expiry, rate limit,
+    # network drop) returns few/zero listings. Without this guard, update_tracking
+    # would mark EVERY tracked listing as "disappeared/sold" and corrupt the data.
+    # If the active count collapses versus what we already know is live, skip this
+    # run entirely and preserve the tracking file.
+    prior_active = sum(1 for r in tracking.values() if r.get("status") == "active")
+    current_ids = {str(i.get("id")) for i in raw if i.get("id")}
+    if not first_run and prior_active >= 20 and len(current_ids) < prior_active * 0.5:
+        print(
+            f"⚠️  Catalog returned only {len(current_ids)} listings vs {prior_active} "
+            f"active previously — almost certainly a failed/partial fetch (expired "
+            f"login or rate limit). Skipping this run to protect the tracking data. "
+            f"Re-login to Vinted and the next run will resume normally."
+        )
+        sys.exit(3)
+
     newly, disappeared = update_tracking(tracking, raw, now)
 
     # Capture publish time across parallel tabs for active listings missing it.
