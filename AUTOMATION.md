@@ -48,9 +48,14 @@ Run `run_tracker` every 4–6 hours.
 
 ## Keeping it healthy
 
-- **Login expires periodically.** When it does, the tracker prints "Not logged in …
-  exiting" and skips that cycle (it never hangs). Just re-open Chrome, log into
-  Vinted again, and the next scheduled run resumes. Expect this maybe weekly.
+- **Keep the Chrome window OPEN — do not close it.** `run_tracker` connects to the
+  already-running Chrome; it deliberately does **not** relaunch it, because a
+  relaunched Chrome starts logged out (a known Vinted/Chrome session quirk). If
+  Chrome is closed (or the machine reboots), `run_tracker` stops with a clear
+  message; just run `start_scraper` again, log in, and leave it open.
+- **Login expires periodically** (roughly weekly). When it does, a run fetches 0
+  listings — the safety guard skips it and preserves the data. Re-open Chrome / log
+  into Vinted again, and the next run resumes normally.
 - **Check `automation.log`** occasionally to confirm runs are completing and to spot
   repeated "Not logged in" messages (time to re-login).
 - Output to watch: `variant_report_<product>.csv` — refreshed every run, accuracy

@@ -3,9 +3,11 @@
 #   VINTED TRACKER — automated scheduled run (Phase 4.5, Mac/Linux)
 # ============================================================
 # Runs the sales tracker for every product in tracked_keywords.txt, unattended.
-# Uses an existing debug-Chrome if one is up; otherwise relaunches a CLEAN Chrome
-# with the logged-in Vinted profile (same as start_scraper). Schedule with cron.
-# See AUTOMATION.md.
+#
+# REQUIRES: Chrome already running with the debugging port + logged into Vinted,
+# left OPEN. This script does NOT relaunch Chrome — relaunching starts a
+# logged-out browser even though the cookies are on disk. Keep the Chrome window
+# open on the dedicated machine. See AUTOMATION.md.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
@@ -13,18 +15,11 @@ cd "$SCRIPT_DIR" || exit 1
 export VINTED_AUTOMATED=1        # never block on a login prompt
 export VINTED_TRACK_WORKERS=2    # gentle — avoids Vinted's rate limiting
 
-# Is a debug-Chrome already running on port 9222?
+# Confirm the logged-in debug-Chrome is up; if not, stop (don't corrupt anything).
 if ! curl -s -m 3 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
-  echo "[$(date)] Chrome/CDP not up — launching a clean Chrome with the Vinted profile..."
-  # Kill first so the debug port + profile are clean (this is what makes the
-  # logged-in account appear, exactly like start_scraper).
-  pkill -i "Google Chrome" 2>/dev/null
-  sleep 2
-  CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-  "$CHROME" --remote-debugging-port=9222 \
-    --user-data-dir="$SCRIPT_DIR/vinted_profile" \
-    "https://www.vinted.fr" >/dev/null 2>&1 &
-  sleep 12
+  echo "[$(date)] ERROR: Chrome is not running with the debugging port."
+  echo "   Run start_scraper.sh, log into Vinted, and LEAVE Chrome open. Then retry."
+  exit 1
 fi
 
 KEYWORDS_FILE="$SCRIPT_DIR/tracked_keywords.txt"
