@@ -10,6 +10,8 @@ __pycache__/
 # Logs & backups
 *.log
 *.bak
+*-bak
 
 # Internal planning — contains pricing & client-negotiation strategy. Keep private.
 PROJECT_GOALS.md
+HANDOFF.md
