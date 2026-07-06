@@ -15,3 +15,7 @@ __pycache__/
 # Internal planning — contains pricing & client-negotiation strategy. Keep private.
 PROJECT_GOALS.md
 HANDOFF.md
+
+# Phase 5 — image-embedding cache (large, regenerable) & per-run cluster outputs
+phase5_cache/
+visual_variants_*.csv

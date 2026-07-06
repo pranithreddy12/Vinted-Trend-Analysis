@@ -465,15 +465,38 @@ def load_prev_variant_snapshot(exclude_date: str) -> dict:
     return out
 
 
-def variant_analysis(tracking: dict, now: datetime | None = None):
+def _load_visual_variants(slug: str) -> tuple[dict, dict]:
+    """Phase 5 hook: stable {listing_id: cluster_id} + {cluster_id: label} from
+    the visual index, if one has been built for this keyword. Read-only and
+    cheap (numpy file load, no torch) — returns empty dicts when Phase 5 is
+    unused, so Phase 4 behaviour is unchanged."""
+    if not slug:
+        return {}, {}
+    try:
+        import image_cluster
+
+        return image_cluster.load_visual_assignments(slug)
+    except Exception:
+        return {}, {}
+
+
+def variant_analysis(
+    tracking: dict, now: datetime | None = None, visual_slug: str | None = None
+):
     """
     Aggregate per-variant turnover into the concrete metrics the SaaS shows:
     estimated sales/30d, sales velocity (days), competition level, market trend,
     average price, confidence, and last-updated. Returns (sorted list, window_days).
+
+    visual_slug (Phase 5): keyword slug whose visual-variant index should fill in
+    groupings for listings the text tokenizer can't parse (no capacity+colour in
+    the title). Text variants stay authoritative when they exist; the photo-based
+    cluster only catches what would otherwise be dropped from the analysis.
     """
     now = now or datetime.now(timezone.utc)
     updated = now.strftime("%Y-%m-%d %H:%M UTC")
     prev_snap = load_prev_variant_snapshot(now.strftime("%Y-%m-%d"))
+    vis_map, vis_labels = _load_visual_variants(visual_slug)
 
     firsts = []
     for r in tracking.values():
@@ -489,7 +512,12 @@ def variant_analysis(tracking: dict, now: datetime | None = None):
     for r in tracking.values():
         v = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""))
         if not v:
-            continue
+            # Phase 5 fallback: no text variant — group by what the PHOTO shows.
+            cid = vis_map.get(str(r.get("id", "")))
+            if not cid:
+                continue
+            label = (vis_labels.get(cid) or "").strip()
+            v = f"📷 {cid}" + (f" · {label[:40]}" if label else "")
         g = groups.setdefault(
             v, {"active": 0, "gone": 0, "lifes": [], "prices": []}
         )
@@ -774,7 +802,7 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
         print(f"  Sell-through: {sell_through}% of tracked listings gone")
 
     # Per-variant market data — the concrete Phase 4 output (no abstract score lead).
-    variants, window_days = variant_analysis(tracking)
+    variants, window_days = variant_analysis(tracking, visual_slug=_slug(keyword))
     if variants:
         print(f"\n  ════ PRODUCT VARIANTS — market data ════")
         print(f"  {'variant':<17}{'sales/30d':>10}{'velocity':>9}"
@@ -870,6 +898,18 @@ def main():
 
     newly, disappeared = update_tracking(tracking, raw, now)
 
+    # Phase 5 (opt-in): embed new listings' cover photos and assign stable visual
+    # variant ids. MUST happen at fetch time — Vinted photo URLs expire, so a
+    # listing's image is only reliably downloadable while it's in the live catalog.
+    # Runs after the corruption guard so we never embed a failed/partial fetch.
+    if os.environ.get("VINTED_VISUAL") == "1":
+        try:
+            import image_cluster
+
+            image_cluster.update_visual_index(_slug(keyword), raw)
+        except Exception as e:
+            print(f"⚠️  visual variant indexing skipped: {type(e).__name__}: {e}")
+
     # Capture publish time across parallel tabs for active listings missing it.
     if os.environ.get("VINTED_TRACK_ENRICH", "1") != "0":
         enrich_publish_times(tracking, path)
@@ -878,7 +918,7 @@ def main():
     report(keyword, tracking, newly, disappeared, first_run)
     print(f"\n💾 Tracking state saved: {path}")
 
-    variants, _ = variant_analysis(tracking)
+    variants, _ = variant_analysis(tracking, visual_slug=_slug(keyword))
     vpath = save_variant_report(variants, f"variant_report_{_slug(keyword)}.csv")
     if vpath:
         print(f"💾 Variant report saved: {vpath} ({len(variants)} variants)")
