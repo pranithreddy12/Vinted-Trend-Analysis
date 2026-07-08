@@ -330,49 +330,53 @@ def build_variant(title: str, brand: str, color: str) -> str:
 
 def compute_variant_opportunity(competition: int, est_sales_30d: float, median_days):
     """
-    Score a variant 0–100 from concrete signals the client cares about:
-    liquidity (how fast it sells), sales volume, and competition. Returns the
-    score and a plain verdict (🚀 High Resale Opportunity at the top).
-    """
-    # Liquidity — faster sale = better (max 40)
-    if median_days is None:
-        liq = 0
-    elif median_days <= 1:
-        liq = 40
-    elif median_days <= 3:
-        liq = 30
-    elif median_days <= 7:
-        liq = 20
-    elif median_days <= 14:
-        liq = 10
-    else:
-        liq = 5
+    Score a variant 0–100 from concrete signals the client cares about.
 
-    # Sales volume — estimated sales per 30 days (max 35)
+    DEMAND-FIRST weighting (client feedback 2026-07-07): proven sales volume is
+    the primary signal (max 50), liquidity second (max 30), competition last
+    (max 20). Previously low competition + fast sales let tiny niches outrank
+    high-volume proven sellers (a 5-sale/mo purple scored above the 48-sale/mo
+    pink); volume now leads, matching how the client reads the market.
+    """
+    # Sales volume — estimated sales per 30 days (max 50, the lead signal)
     if est_sales_30d >= 30:
-        vol = 35
+        vol = 50
     elif est_sales_30d >= 15:
-        vol = 28
+        vol = 38
     elif est_sales_30d >= 8:
-        vol = 20
+        vol = 26
     elif est_sales_30d >= 3:
-        vol = 12
+        vol = 14
     elif est_sales_30d >= 1:
-        vol = 6
+        vol = 7
     else:
         vol = 0
 
-    # Competition — fewer active listings = more room (max 25); 0 = no market
+    # Liquidity — faster sale = better (max 30)
+    if median_days is None:
+        liq = 0
+    elif median_days <= 1:
+        liq = 30
+    elif median_days <= 3:
+        liq = 24
+    elif median_days <= 7:
+        liq = 16
+    elif median_days <= 14:
+        liq = 8
+    else:
+        liq = 4
+
+    # Competition — fewer active listings = more room (max 20); 0 = no market
     if competition == 0:
-        comp = 5
+        comp = 4
     elif competition <= 10:
-        comp = 25
+        comp = 20
     elif competition <= 30:
-        comp = 18
+        comp = 15
     elif competition <= 60:
-        comp = 12
+        comp = 10
     elif competition <= 120:
-        comp = 6
+        comp = 5
     else:
         comp = 2
 
@@ -396,6 +400,17 @@ def competition_label(active: int) -> str:
         return "Medium"
     else:
         return "High"
+
+
+def demand_label(est_sales_30d: float) -> str:
+    """Plain demand level from proven monthly sales — the client-facing lead
+    signal ("Pink 40oz → 48 sales/month • High demand • Medium competition")."""
+    if est_sales_30d >= 20:
+        return "High"
+    elif est_sales_30d >= 8:
+        return "Medium"
+    else:
+        return "Low"
 
 
 def variant_confidence(sold_tracked: int, window_days: float) -> str:
@@ -563,6 +578,7 @@ def variant_analysis(
             {
                 "variant": v,
                 "est_sales_30d": est_30d,
+                "demand_level": demand_label(est_30d),
                 "median_days_to_sell": med_days,
                 "competition": g["active"],
                 "competition_level": competition_label(g["active"]),
@@ -590,6 +606,7 @@ def save_variant_report(variants: list, output_file: str = "variant_report.csv")
     fields = [
         "variant",
         "est_sales_30d",
+        "demand_level",
         "median_days_to_sell",
         "competition",
         "competition_level",
@@ -805,7 +822,7 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
     variants, window_days = variant_analysis(tracking, visual_slug=_slug(keyword))
     if variants:
         print(f"\n  ════ PRODUCT VARIANTS — market data ════")
-        print(f"  {'variant':<17}{'sales/30d':>10}{'velocity':>9}"
+        print(f"  {'variant':<17}{'sales/30d':>10}{'demand':>8}{'velocity':>9}"
               f"{'competition':>13}{'trend':>11}{'price':>7}{'conf':>7}")
         for v in variants[:12]:
             md = v["median_days_to_sell"]
@@ -813,12 +830,16 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
             price = f"{v['avg_price']}€" if v["avg_price"] is not None else "—"
             comp = f"{v['competition_level']}({v['competition']})"
             print(
-                f"  {v['variant'][:17]:<17}{('~' + str(v['est_sales_30d'])):>10}{vel:>9}"
+                f"  {v['variant'][:17]:<17}{('~' + str(v['est_sales_30d'])):>10}"
+                f"{v['demand_level']:>8}{vel:>9}"
                 f"{comp:>13}{v['trend']:>11}{price:>7}{v['confidence']:>7}"
             )
         print(f"\n  📊 Data transparency:")
-        print(f"     • Estimated sales — calculated from listing turnover over the last "
-              f"{window_days} days (Estimated)")
+        print(f"     • Estimated sales — MARKETPLACE-WIDE sales of that exact variant, "
+              f"calculated from listing turnover over the last {window_days} days "
+              f"(Estimated; not a per-seller forecast)")
+        print(f"     • Demand — level of proven monthly sales volume (High ≥20/mo, "
+              f"Medium ≥8/mo)")
         print(f"     • Velocity — median posted→sold time (Calculated)")
         print(f"     • Competition — active listings of that exact variant now (Calculated)")
         print(f"     • Trend — vs the previous run (Signal); 'Building' until 2+ runs exist")
