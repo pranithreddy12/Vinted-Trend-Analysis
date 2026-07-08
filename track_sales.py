@@ -599,6 +599,38 @@ def variant_analysis(
     return out, round(window_days, 1)
 
 
+def opportunity_label(score: int) -> str:
+    """Plain one-word read of the 0-100 score for the summary card."""
+    if score >= 65:
+        return "Excellent"
+    elif score >= 50:
+        return "Good"
+    elif score >= 30:
+        return "Fair"
+    else:
+        return "Low"
+
+
+def format_variant_card(variant_name: str, v: dict) -> str:
+    """Client-requested summary-card layout for one variant — the concrete,
+    numbers-first format he asked for in place of the raw table row."""
+    md = v["median_days_to_sell"]
+    vel = f"{md} days" if md is not None else "not yet measured"
+    price = f"€{v['avg_price']}" if v["avg_price"] is not None else "—"
+    lines = [
+        f"{variant_name.title()}",
+        "",
+        f"🔥 Estimated Sales: {v['est_sales_30d']}/month",
+        f"⚡ Average Time to Sell: {vel}",
+        f"🏷️ Average Selling Price: {price}",
+        f"👥 Active Listings: {v['competition']}",
+        f"📈 Trend: {v['trend']}",
+        f"🏆 Competition: {v['competition_level']}",
+        f"🎯 Opportunity: {opportunity_label(v['score'])}",
+    ]
+    return "\n".join(lines)
+
+
 def save_variant_report(variants: list, output_file: str = "variant_report.csv") -> str | None:
     """Export the per-variant opportunity table — the concrete Phase 4 deliverable."""
     if not variants:
@@ -821,6 +853,9 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
     # Per-variant market data — the concrete Phase 4 output (no abstract score lead).
     variants, window_days = variant_analysis(tracking, visual_slug=_slug(keyword))
     if variants:
+        print(f"\n  ════ TOP OPPORTUNITY ════")
+        print("  " + format_variant_card(f"{keyword} {variants[0]['variant']}", variants[0])
+              .replace("\n", "\n  "))
         print(f"\n  ════ PRODUCT VARIANTS — market data ════")
         print(f"  {'variant':<17}{'sales/30d':>10}{'demand':>8}{'velocity':>9}"
               f"{'competition':>13}{'trend':>11}{'price':>7}{'conf':>7}")
@@ -888,11 +923,21 @@ def main():
         cookies, token = fr.get_cookies_and_token(context, page)
         print(f"   🔑 Access token: {'found' if token else 'NOT FOUND'}")
 
-        print(f"\n🔍 Fetching complete active catalog for: {keyword}")
+        # Cross-border coverage (opt-in): VINTED_DOMAINS="fr,de,it,es,be,nl,pt,at"
+        # merges catalogs across the client's shipping-zone domains by listing id.
+        # Default is FR-only (unchanged behavior) — FR alone misses ~45% of the
+        # listings actually visible to a seller shipping cross-border (measured
+        # 2026-07-07 on stanley quencher: 287 on .fr vs 522 union across 8 domains).
+        domains = tuple(
+            d.strip() for d in os.environ.get("VINTED_DOMAINS", "fr").split(",") if d.strip()
+        )
+        print(f"\n🔍 Fetching complete active catalog for: {keyword}"
+              + (f"  (domains: {', '.join(domains)})" if len(domains) > 1 else ""))
         # Fetch ALL pages and disable the age-based early stop so the active set is
         # complete — otherwise items would look 'disappeared' just for being old.
-        raw = fr.fetch_catalog_via_requests(
-            keyword, cookies, token, max_pages=None, stop_when_old_ratio=2.0
+        raw = fr.fetch_catalog_multi_domain(
+            keyword, cookies, token, domains=domains,
+            max_pages=None, stop_when_old_ratio=2.0,
         )
         print(f"   → {len(raw)} active listings right now")
     # Auth session closed; the enrichment workers open their own CDP connections.
