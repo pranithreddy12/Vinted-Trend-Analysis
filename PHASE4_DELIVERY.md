@@ -20,10 +20,11 @@ Pink 40oz").
 | Data transparency (what's measured, how, confidence) | ✅ Done | Console footer + `confidence` |
 | No abstract scoring as the focus | ✅ Done | Concrete metrics lead; the 0–100 score is a secondary column |
 | Ranking that favours real demand over low competition | ✅ Done | Reweighted after your feedback — see below |
+| Buyer offers as an early-demand signal | ✅ Done | `offers` column + factored into the score — see below |
 | Tracking across your full shipping zone, not just France | ✅ Done | Cross-border multi-country tracking — see below |
 
 Also included, based on your feedback during this phase: the **demand-first ranking**
-reweight and the **summary card format** you sketched.
+reweight, the **buyer-offers signal**, and the **summary card format** you sketched.
 
 ---
 
@@ -67,9 +68,10 @@ Stanley Quencher 40oz Pink
 
 🔥 Estimated Sales: 38.9/month
 ⚡ Average Time to Sell: 15.4 days
+📈 Buyer Demand (offers): 12
 🏷️ Average Selling Price: €44.4
 👥 Active Listings: 18
-📈 Trend: Stable
+📊 Sales Trend: Stable
 🏆 Competition: Medium
 🎯 Opportunity: Excellent
 ```
@@ -81,11 +83,31 @@ output and in `variant_report_<product>.csv`.
 
 ## How to read the numbers (important)
 
-**Ranking is demand-first.** After your feedback, the opportunity score now weighs proven
-monthly sales volume heaviest, then how fast it sells, then competition last. A variant
-that sells 40 times a month will generally outrank one that sells 5 times a month, even if
-the 5-a-month variant has less competition. Competition still matters — it's the
-tie-breaker between similarly-selling variants — but it no longer overrides real demand.
+**Ranking is demand-first.** After your feedback, the opportunity score weighs the four
+signals in this priority order:
+
+1. **Proven monthly sales volume** (highest) — actual completed sales.
+2. **Sales velocity** — how fast it sells (under ~3 days is excellent).
+3. **Buyer demand (offers)** — early demand; buyers making offers precede completed sales.
+4. **Competition** (lowest) — a tie-breaker between similarly-selling variants, no longer
+   able to override real demand.
+
+A variant that sells 40 times a month will generally outrank one that sells 5 times a
+month, even if the 5-a-month variant has less competition.
+
+**Buyer offers are your early-warning signal.** The `offers` column shows the total live
+offers buyers have made across that variant's active listings. Offers tend to appear
+*before* sales show up in the numbers, so a fresh product that's heating up will register
+offers first — giving you a head start before its estimated-sales figure catches up. This
+is captured from the listing pages as the tool tracks them, so the coverage builds up over
+the first several runs; a `—` means offers haven't been read for that variant yet (its
+score is then based on the other three signals, not penalised). Offers keep doing their
+original job in the keyword/search analysis too — this just brings the same signal into the
+variant view.
+
+> If you want to compare the tables with and without the offers column (purely a display
+> preference), set `VINTED_SHOW_OFFERS=0` to hide it. The score always uses offers either
+> way — the toggle only changes what's shown.
 
 **Estimated sales is marketplace-wide, not a per-seller forecast.** "38.9/month" is the
 total across all sellers of that exact variant, measured from listings disappearing from

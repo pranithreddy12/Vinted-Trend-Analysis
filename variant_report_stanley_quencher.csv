@@ -1,90 +1,90 @@
-variant,est_sales_30d,demand_level,median_days_to_sell,competition,competition_level,trend,avg_price,confidence,sold_tracked,score,verdict,last_updated
-40oz pink,40.6,High,15.4,18,Medium,Stable,44.4,Medium,29,69,🔥 Strong,2026-07-07 16:10 UTC
-1.18l pink,32.2,High,14.5,33,Medium,Stable,40.5,Medium,23,64,🔥 Strong,2026-07-07 16:10 UTC
-1.18l cream,11.2,Medium,0.8,19,Medium,Stable,33.1,Medium,8,71,🚀 High Resale Opportunity,2026-07-07 16:10 UTC
-1.18l white,7.0,Low,1.6,2,Low,Stable,37.7,Medium,5,58,🔥 Strong,2026-07-07 16:10 UTC
-40oz cream,7.0,Low,3.4,10,Low,Stable,39.3,Medium,5,50,🔥 Strong,2026-07-07 16:10 UTC
-1.2l pink,5.6,Low,1.1,5,Low,Stable,53.9,Medium,4,58,🔥 Strong,2026-07-07 16:10 UTC
-1.18l black,4.2,Low,1.1,9,Low,Stable,40.0,Medium,3,58,🔥 Strong,2026-07-07 16:10 UTC
-40oz blue,4.2,Low,3.0,3,Low,Stable,40.2,Medium,3,58,🔥 Strong,2026-07-07 16:10 UTC
-1.18l purple,4.2,Low,3.0,8,Low,Stable,41.3,Medium,3,58,🔥 Strong,2026-07-07 16:10 UTC
-40oz black,4.2,Low,18.1,9,Low,Stable,38.3,Medium,3,38,👍 Worth Watching,2026-07-07 16:10 UTC
-0.9l white,2.8,Low,1.0,0,Low,Stable,27.0,Low,2,41,👍 Worth Watching,2026-07-07 16:10 UTC
-30oz pink,2.8,Low,1.1,3,Low,Stable,44.0,Low,2,51,🔥 Strong,2026-07-07 16:10 UTC
-30oz grey,2.8,Low,1.6,0,Low,Stable,45.0,Low,2,35,👍 Worth Watching,2026-07-07 16:10 UTC
-1.18l grey,2.8,Low,1.8,2,Low,Stable,42.5,Low,2,51,🔥 Strong,2026-07-07 16:10 UTC
-20oz pink,2.8,Low,1.9,3,Low,Stable,51.4,Low,2,51,🔥 Strong,2026-07-07 16:10 UTC
-40oz vert foncé,2.8,Low,8.8,1,Low,Stable,26.7,Low,2,35,👍 Worth Watching,2026-07-07 16:10 UTC
-40oz coral,2.8,Low,,2,Low,Stable,62.5,Low,2,27,⚠️ Weak,2026-07-07 16:10 UTC
-1.18l red,2.8,Low,,2,Low,Stable,50.8,Low,2,27,⚠️ Weak,2026-07-07 16:10 UTC
-40oz purple,2.8,Low,,7,Low,Stable,55.2,Low,2,27,⚠️ Weak,2026-07-07 16:10 UTC
-1.2l blue,2.8,Low,,2,Low,Stable,43.2,Low,2,27,⚠️ Weak,2026-07-07 16:10 UTC
-1.18l green,2.8,Low,,5,Low,Stable,41.6,Low,2,27,⚠️ Weak,2026-07-07 16:10 UTC
-1.2l purple,2.8,Low,,5,Low,Stable,36.9,Low,2,27,⚠️ Weak,2026-07-07 16:10 UTC
-20oz black,2.8,Low,,2,Low,Stable,51.2,Low,2,27,⚠️ Weak,2026-07-07 16:10 UTC
-1.18l bleu clair,2.8,Low,,3,Low,Stable,59.0,Low,2,27,⚠️ Weak,2026-07-07 16:10 UTC
-1.2l green,1.4,Low,0.8,3,Low,Stable,41.1,Low,1,57,🔥 Strong,2026-07-07 16:10 UTC
-30oz black,1.4,Low,0.8,1,Low,Stable,39.2,Low,1,57,🔥 Strong,2026-07-07 16:10 UTC
-30oz cream,1.4,Low,1.6,2,Low,Stable,27.7,Low,1,51,🔥 Strong,2026-07-07 16:10 UTC
-30oz coral,1.4,Low,3.0,2,Low,Stable,43.0,Low,1,51,🔥 Strong,2026-07-07 16:10 UTC
-1.18l turquoise,1.4,Low,14.7,3,Low,Stable,37.8,Low,1,31,👍 Worth Watching,2026-07-07 16:10 UTC
-0.89l blue,1.4,Low,15.6,3,Low,Stable,37.0,Low,1,31,👍 Worth Watching,2026-07-07 16:10 UTC
-1.18l blue,1.4,Low,16.7,1,Low,Stable,36.0,Low,1,31,👍 Worth Watching,2026-07-07 16:10 UTC
-40oz white,1.4,Low,19.8,3,Low,Stable,41.5,Low,1,31,👍 Worth Watching,2026-07-07 16:10 UTC
-1.2l cream,1.4,Low,,7,Low,Stable,33.9,Low,1,27,⚠️ Weak,2026-07-07 16:10 UTC
-40oz yellow,1.4,Low,,0,Low,Stable,28.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-1.19l pink,1.4,Low,,0,Low,Stable,20.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-30oz blue,1.4,Low,,4,Low,Stable,49.0,Low,1,27,⚠️ Weak,2026-07-07 16:10 UTC
-40oz red,1.4,Low,,2,Low,Stable,48.0,Low,1,27,⚠️ Weak,2026-07-07 16:10 UTC
-14oz blue,1.4,Low,,0,Low,Stable,19.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-40oz grey,1.4,Low,,1,Low,Stable,42.5,Low,1,27,⚠️ Weak,2026-07-07 16:10 UTC
-0.59l grey,1.4,Low,,0,Low,Stable,45.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-1.8l pink,1.4,Low,,0,Low,Stable,48.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-1l grey,1.4,Low,,0,Low,Stable,38.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-473ml pink,1.4,Low,,0,Low,Stable,20.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-1l cream,1.4,Low,,0,Low,Stable,38.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-0.89l purple,1.4,Low,,1,Low,Stable,53.0,Low,1,27,⚠️ Weak,2026-07-07 16:10 UTC
-1.18l vert foncé,1.4,Low,,1,Low,Stable,36.2,Low,1,27,⚠️ Weak,2026-07-07 16:10 UTC
-0.6l bleu clair,1.4,Low,,0,Low,Stable,45.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-887ml green,1.4,Low,,0,Low,Stable,40.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-30oz green,1.4,Low,,0,Low,Stable,70.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-30oz multicolore,1.4,Low,,0,Low,Stable,55.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-0.89l green,1.4,Low,,0,Low,Stable,45.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-40oz argenté,1.4,Low,,0,Low,Stable,22.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-887ml pink,1.4,Low,,0,Low,Stable,45.0,Low,1,11,⚠️ Weak,2026-07-07 16:10 UTC
-30oz purple,0.0,Low,,4,Low,Stable,47.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-20oz blue,0.0,Low,,1,Low,Stable,30.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-0.59l coral,0.0,Low,,1,Low,Stable,33.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-1.18l brown,0.0,Low,,2,Low,Stable,45.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-0.9l cream,0.0,Low,,1,Low,Stable,40.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-40oz abricot,0.0,Low,,1,Low,Stable,65.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-40oz turquoise,0.0,Low,,1,Low,Stable,40.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-0.89l pink,0.0,Low,,2,Low,Stable,26.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-800ml cream,0.0,Low,,1,Low,Stable,40.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-1.12l pink,0.0,Low,,1,Low,Stable,40.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-1.20l bleu clair,0.0,Low,,1,Low,Stable,23.5,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-40oz green,0.0,Low,,7,Low,Stable,63.4,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-1.2l abricot,0.0,Low,,1,Low,Stable,175.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-590ml white,0.0,Low,,1,Low,Stable,40.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-1.2l grey,0.0,Low,,1,Low,Stable,39.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-0.75l pink,0.0,Low,,1,Low,Stable,85.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-0.41l grey,0.0,Low,,1,Low,Stable,35.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-0.8l cream,0.0,Low,,1,Low,Stable,31.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-0.89l orange,0.0,Low,,1,Low,Stable,105.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-0.59l cream,0.0,Low,,1,Low,Stable,40.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-40oz bleu clair,0.0,Low,,1,Low,Stable,40.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-0.59l brown,0.0,Low,,1,Low,Stable,55.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-30oz bleu clair,0.0,Low,,1,Low,Stable,40.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-1.2l bleu clair,0.0,Low,,1,Low,Stable,60.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-1.2l white,0.0,Low,,1,Low,Stable,60.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-1.2l black,0.0,Low,,2,Low,Stable,35.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-1.2l brown,0.0,Low,,1,Low,Stable,105.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-40oz doré,0.0,Low,,1,Low,Stable,75.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-20oz purple,0.0,Low,,1,Low,Stable,32.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-30oz turquoise,0.0,Low,,1,Low,Stable,25.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-30ml black,0.0,Low,,1,Low,Stable,25.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-88l orange,0.0,Low,,1,Low,Stable,36.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-40oz brown,0.0,Low,,1,Low,Stable,32.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-30oz orange,0.0,Low,,1,Low,Stable,43.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-0.89l turquoise,0.0,Low,,1,Low,Stable,40.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
-750ml vert foncé,0.0,Low,,1,Low,Stable,12.0,Low,0,20,⚠️ Weak,2026-07-07 16:10 UTC
+variant,est_sales_30d,demand_level,median_days_to_sell,competition,competition_level,trend,avg_price,offers,offers_coverage,confidence,sold_tracked,score,verdict,last_updated
+40oz pink,36.9,High,15.4,18,Medium,Decreasing,44.4,0,0,Medium,29,70,🚀 High Resale Opportunity,2026-07-09 20:25 UTC
+1.18l pink,29.2,High,14.5,33,Medium,Decreasing,40.5,0,0,Medium,23,52,🔥 Strong,2026-07-09 20:25 UTC
+1.18l cream,10.2,Medium,0.8,19,Medium,Decreasing,33.1,0,0,Medium,8,70,🚀 High Resale Opportunity,2026-07-09 20:25 UTC
+1.18l white,6.4,Low,1.6,2,Low,Decreasing,37.7,0,0,Medium,5,55,🔥 Strong,2026-07-09 20:25 UTC
+40oz cream,6.4,Low,3.4,10,Low,Decreasing,39.3,0,0,Medium,5,46,👍 Worth Watching,2026-07-09 20:25 UTC
+1.2l pink,5.1,Low,1.1,5,Low,Decreasing,53.9,0,0,Medium,4,55,🔥 Strong,2026-07-09 20:25 UTC
+1.18l black,3.8,Low,1.1,9,Low,Decreasing,40.0,0,0,Medium,3,55,🔥 Strong,2026-07-09 20:25 UTC
+40oz blue,3.8,Low,3.0,3,Low,Decreasing,40.2,0,0,Medium,3,55,🔥 Strong,2026-07-09 20:25 UTC
+1.18l purple,3.8,Low,3.0,8,Low,Decreasing,41.3,0,0,Medium,3,55,🔥 Strong,2026-07-09 20:25 UTC
+40oz black,3.8,Low,18.1,9,Low,Decreasing,38.3,0,0,Medium,3,34,👍 Worth Watching,2026-07-09 20:25 UTC
+0.9l white,2.5,Low,1.0,0,Low,Decreasing,27.0,0,0,Low,2,40,👍 Worth Watching,2026-07-09 20:25 UTC
+30oz pink,2.5,Low,1.1,3,Low,Decreasing,44.0,0,0,Low,2,46,👍 Worth Watching,2026-07-09 20:25 UTC
+30oz grey,2.5,Low,1.6,0,Low,Decreasing,45.0,0,0,Low,2,34,👍 Worth Watching,2026-07-09 20:25 UTC
+1.18l grey,2.5,Low,1.8,2,Low,Decreasing,42.5,0,0,Low,2,46,👍 Worth Watching,2026-07-09 20:25 UTC
+20oz pink,2.5,Low,1.9,3,Low,Decreasing,51.4,0,0,Low,2,46,👍 Worth Watching,2026-07-09 20:25 UTC
+40oz vert foncé,2.5,Low,8.8,1,Low,Decreasing,26.7,0,0,Low,2,30,👍 Worth Watching,2026-07-09 20:25 UTC
+40oz coral,2.5,Low,,2,Low,Decreasing,62.5,0,0,Low,2,22,⚠️ Weak,2026-07-09 20:25 UTC
+1.18l red,2.5,Low,,2,Low,Decreasing,50.8,0,0,Low,2,22,⚠️ Weak,2026-07-09 20:25 UTC
+40oz purple,2.5,Low,,7,Low,Decreasing,55.2,0,0,Low,2,22,⚠️ Weak,2026-07-09 20:25 UTC
+1.2l blue,2.5,Low,,2,Low,Decreasing,43.2,0,0,Low,2,22,⚠️ Weak,2026-07-09 20:25 UTC
+1.18l green,2.5,Low,,5,Low,Decreasing,41.6,0,0,Low,2,22,⚠️ Weak,2026-07-09 20:25 UTC
+1.2l purple,2.5,Low,,5,Low,Decreasing,36.9,0,0,Low,2,22,⚠️ Weak,2026-07-09 20:25 UTC
+20oz black,2.5,Low,,2,Low,Decreasing,51.2,0,0,Low,2,22,⚠️ Weak,2026-07-09 20:25 UTC
+1.18l bleu clair,2.5,Low,,3,Low,Decreasing,59.0,0,0,Low,2,22,⚠️ Weak,2026-07-09 20:25 UTC
+1.2l green,1.3,Low,0.8,3,Low,Decreasing,41.1,0,0,Low,1,52,🔥 Strong,2026-07-09 20:25 UTC
+30oz black,1.3,Low,0.8,1,Low,Decreasing,39.2,0,0,Low,1,52,🔥 Strong,2026-07-09 20:25 UTC
+30oz cream,1.3,Low,1.6,2,Low,Decreasing,27.7,0,0,Low,1,46,👍 Worth Watching,2026-07-09 20:25 UTC
+30oz coral,1.3,Low,3.0,2,Low,Decreasing,43.0,0,0,Low,1,46,👍 Worth Watching,2026-07-09 20:25 UTC
+1.18l turquoise,1.3,Low,14.7,3,Low,Decreasing,37.8,0,0,Low,1,26,⚠️ Weak,2026-07-09 20:25 UTC
+0.89l blue,1.3,Low,15.6,3,Low,Decreasing,37.0,0,0,Low,1,26,⚠️ Weak,2026-07-09 20:25 UTC
+1.18l blue,1.3,Low,16.7,1,Low,Decreasing,36.0,0,0,Low,1,26,⚠️ Weak,2026-07-09 20:25 UTC
+40oz white,1.3,Low,19.8,3,Low,Decreasing,41.5,0,0,Low,1,26,⚠️ Weak,2026-07-09 20:25 UTC
+1.2l cream,1.3,Low,,7,Low,Decreasing,33.9,0,0,Low,1,22,⚠️ Weak,2026-07-09 20:25 UTC
+40oz yellow,1.3,Low,,0,Low,Decreasing,28.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+1.19l pink,1.3,Low,,0,Low,Decreasing,20.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+30oz blue,1.3,Low,,4,Low,Decreasing,49.0,0,0,Low,1,22,⚠️ Weak,2026-07-09 20:25 UTC
+40oz red,1.3,Low,,2,Low,Decreasing,48.0,0,0,Low,1,22,⚠️ Weak,2026-07-09 20:25 UTC
+14oz blue,1.3,Low,,0,Low,Decreasing,19.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+40oz grey,1.3,Low,,1,Low,Decreasing,42.5,0,0,Low,1,22,⚠️ Weak,2026-07-09 20:25 UTC
+0.59l grey,1.3,Low,,0,Low,Decreasing,45.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+1.8l pink,1.3,Low,,0,Low,Decreasing,48.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+1l grey,1.3,Low,,0,Low,Decreasing,38.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+473ml pink,1.3,Low,,0,Low,Decreasing,20.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+1l cream,1.3,Low,,0,Low,Decreasing,38.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+0.89l purple,1.3,Low,,1,Low,Decreasing,53.0,0,0,Low,1,22,⚠️ Weak,2026-07-09 20:25 UTC
+1.18l vert foncé,1.3,Low,,1,Low,Decreasing,36.2,0,0,Low,1,22,⚠️ Weak,2026-07-09 20:25 UTC
+0.6l bleu clair,1.3,Low,,0,Low,Decreasing,45.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+887ml green,1.3,Low,,0,Low,Decreasing,40.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+30oz green,1.3,Low,,0,Low,Decreasing,70.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+30oz multicolore,1.3,Low,,0,Low,Decreasing,55.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+0.89l green,1.3,Low,,0,Low,Decreasing,45.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+40oz argenté,1.3,Low,,0,Low,Decreasing,22.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+887ml pink,1.3,Low,,0,Low,Decreasing,45.0,0,0,Low,1,10,⚠️ Weak,2026-07-09 20:25 UTC
+30oz purple,0.0,Low,,4,Low,Stable,47.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+20oz blue,0.0,Low,,1,Low,Stable,30.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+0.59l coral,0.0,Low,,1,Low,Stable,33.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+1.18l brown,0.0,Low,,2,Low,Stable,45.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+0.9l cream,0.0,Low,,1,Low,Stable,40.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+40oz abricot,0.0,Low,,1,Low,Stable,65.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+40oz turquoise,0.0,Low,,1,Low,Stable,40.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+0.89l pink,0.0,Low,,2,Low,Stable,26.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+800ml cream,0.0,Low,,1,Low,Stable,40.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+1.12l pink,0.0,Low,,1,Low,Stable,40.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+1.20l bleu clair,0.0,Low,,1,Low,Stable,23.5,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+40oz green,0.0,Low,,7,Low,Stable,63.4,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+1.2l abricot,0.0,Low,,1,Low,Stable,175.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+590ml white,0.0,Low,,1,Low,Stable,40.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+1.2l grey,0.0,Low,,1,Low,Stable,39.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+0.75l pink,0.0,Low,,1,Low,Stable,85.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+0.41l grey,0.0,Low,,1,Low,Stable,35.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+0.8l cream,0.0,Low,,1,Low,Stable,31.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+0.89l orange,0.0,Low,,1,Low,Stable,105.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+0.59l cream,0.0,Low,,1,Low,Stable,40.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+40oz bleu clair,0.0,Low,,1,Low,Stable,40.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+0.59l brown,0.0,Low,,1,Low,Stable,55.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+30oz bleu clair,0.0,Low,,1,Low,Stable,40.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+1.2l bleu clair,0.0,Low,,1,Low,Stable,60.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+1.2l white,0.0,Low,,1,Low,Stable,60.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+1.2l black,0.0,Low,,2,Low,Stable,35.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+1.2l brown,0.0,Low,,1,Low,Stable,105.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+40oz doré,0.0,Low,,1,Low,Stable,75.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+20oz purple,0.0,Low,,1,Low,Stable,32.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+30oz turquoise,0.0,Low,,1,Low,Stable,25.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+30ml black,0.0,Low,,1,Low,Stable,25.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+88l orange,0.0,Low,,1,Low,Stable,36.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+40oz brown,0.0,Low,,1,Low,Stable,32.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+30oz orange,0.0,Low,,1,Low,Stable,43.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+0.89l turquoise,0.0,Low,,1,Low,Stable,40.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC
+750ml vert foncé,0.0,Low,,1,Low,Stable,12.0,0,0,Low,0,15,⚠️ Weak,2026-07-09 20:25 UTC

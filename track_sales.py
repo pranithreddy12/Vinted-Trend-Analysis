@@ -45,6 +45,8 @@ TRACK_FIELDS = [
     "brand",           # structured attribute (from item page)
     "color",           # structured attribute (from item page)
     "variant",         # brand + capacity + colour signature for grouping
+    "offers",          # buyer offers on this listing (early-demand signal, from item page)
+    "offers_seen_at",  # when the offers count was captured (offers are a moving snapshot)
 ]
 
 TS_FMT = "%Y-%m-%d %H:%M:%S"
@@ -328,59 +330,95 @@ def build_variant(title: str, brand: str, color: str) -> str:
     return ""
 
 
-def compute_variant_opportunity(competition: int, est_sales_30d: float, median_days):
+def compute_variant_opportunity(
+    competition: int,
+    est_sales_30d: float,
+    median_days,
+    offers_total: int = 0,
+    offers_measured: bool = False,
+):
     """
     Score a variant 0–100 from concrete signals the client cares about.
 
-    DEMAND-FIRST weighting (client feedback 2026-07-07): proven sales volume is
-    the primary signal (max 50), liquidity second (max 30), competition last
-    (max 20). Previously low competition + fast sales let tiny niches outrank
-    high-volume proven sellers (a 5-sale/mo purple scored above the 48-sale/mo
-    pink); volume now leads, matching how the client reads the market.
+    Weighting (client-confirmed priority order, 2026-07-08):
+      1. Proven monthly sales volume  (max 45, the lead signal)
+      2. Sales velocity / liquidity   (max 25)
+      3. Buyer demand signals (offers)(max 18) — early demand, leads sales in time
+      4. Competition level            (max 12, tie-breaker only)
+    Volume still clearly leads so a high-volume proven seller never loses to a tiny
+    fast niche; offers were added as the #3 factor so a product that's heating up
+    (buyers making offers) surfaces before its sales history has caught up.
+
+    offers_measured distinguishes "measured 0 offers" (real weak early demand → the
+    offers component is a genuine 0) from "offers not captured yet for this variant"
+    (unknown → we score the other three factors renormalised to 100 instead of
+    penalising it with a phantom 0). Offer coverage builds up as item pages get
+    enriched over successive runs, so this avoids a first-run dip in every score.
     """
-    # Sales volume — estimated sales per 30 days (max 50, the lead signal)
+    # Sales volume — estimated sales per 30 days (max 45, the lead signal)
     if est_sales_30d >= 30:
-        vol = 50
+        vol = 45
     elif est_sales_30d >= 15:
-        vol = 38
+        vol = 34
     elif est_sales_30d >= 8:
-        vol = 26
+        vol = 23
     elif est_sales_30d >= 3:
-        vol = 14
+        vol = 13
     elif est_sales_30d >= 1:
-        vol = 7
+        vol = 6
     else:
         vol = 0
 
-    # Liquidity — faster sale = better (max 30)
+    # Liquidity — faster sale = better (max 25)
     if median_days is None:
         liq = 0
     elif median_days <= 1:
-        liq = 30
+        liq = 25
     elif median_days <= 3:
-        liq = 24
+        liq = 20
     elif median_days <= 7:
-        liq = 16
+        liq = 13
     elif median_days <= 14:
-        liq = 8
+        liq = 7
     else:
-        liq = 4
+        liq = 3
 
-    # Competition — fewer active listings = more room (max 20); 0 = no market
+    # Buyer demand — total live offers across the variant's active listings (max 18).
+    # An early-demand signal: buyers submitting offers precede completed sales.
+    if offers_total >= 20:
+        off = 18
+    elif offers_total >= 10:
+        off = 14
+    elif offers_total >= 5:
+        off = 10
+    elif offers_total >= 2:
+        off = 6
+    elif offers_total >= 1:
+        off = 3
+    else:
+        off = 0
+
+    # Competition — fewer active listings = more room (max 12); 0 = no market
     if competition == 0:
-        comp = 4
-    elif competition <= 10:
-        comp = 20
-    elif competition <= 30:
-        comp = 15
-    elif competition <= 60:
-        comp = 10
-    elif competition <= 120:
-        comp = 5
-    else:
         comp = 2
+    elif competition <= 10:
+        comp = 12
+    elif competition <= 30:
+        comp = 9
+    elif competition <= 60:
+        comp = 6
+    elif competition <= 120:
+        comp = 3
+    else:
+        comp = 1
 
-    score = min(100, liq + vol + comp)
+    if offers_measured:
+        score = min(100, vol + liq + off + comp)
+    else:
+        # Offers not yet captured for this variant — score the three proven factors
+        # (max 82) renormalised to 100 so an un-measured signal is neutral, not a
+        # penalty. Once offers arrive, the formula above applies.
+        score = min(100, round((vol + liq + comp) * 100 / 82))
     if score >= 70:
         verdict = "🚀 High Resale Opportunity"
     elif score >= 50:
@@ -534,10 +572,22 @@ def variant_analysis(
             label = (vis_labels.get(cid) or "").strip()
             v = f"📷 {cid}" + (f" · {label[:40]}" if label else "")
         g = groups.setdefault(
-            v, {"active": 0, "gone": 0, "lifes": [], "prices": []}
+            v,
+            {"active": 0, "gone": 0, "lifes": [], "prices": [],
+             "offers_total": 0, "offers_listings": 0},
         )
         if r["status"] == "active":
             g["active"] += 1
+            # Buyer-offer signal: only active listings, only where we actually
+            # captured a value (offers live on the item page, enriched for fresh
+            # listings). Empty string / missing = not measured, skip it.
+            ov = r.get("offers")
+            if ov not in ("", None):
+                try:
+                    g["offers_total"] += int(float(ov))
+                    g["offers_listings"] += 1
+                except (ValueError, TypeError):
+                    pass
         elif r["status"] == "disappeared":
             g["gone"] += 1
             lh = r.get("lifespan_hours")
@@ -573,7 +623,10 @@ def variant_analysis(
             round(statistics.median(g["lifes"]) / 24, 1) if g["lifes"] else None
         )
         avg_price = round(statistics.mean(g["prices"]), 1) if g["prices"] else None
-        opp = compute_variant_opportunity(g["active"], est_30d, med_days)
+        opp = compute_variant_opportunity(
+            g["active"], est_30d, med_days, g["offers_total"],
+            offers_measured=g["offers_listings"] > 0,
+        )
         out.append(
             {
                 "variant": v,
@@ -584,6 +637,8 @@ def variant_analysis(
                 "competition_level": competition_label(g["active"]),
                 "trend": variant_trend(est_30d, prev_snap.get(v)),
                 "avg_price": avg_price,
+                "offers": g["offers_total"],
+                "offers_coverage": g["offers_listings"],
                 "confidence": variant_confidence(g["gone"], window_days),
                 "sold_tracked": g["gone"],
                 "score": opp["score"],
@@ -611,6 +666,22 @@ def opportunity_label(score: int) -> str:
         return "Low"
 
 
+def _show_offers() -> bool:
+    """Whether to DISPLAY the offers signal (card/table). Default on; set
+    VINTED_SHOW_OFFERS=0 to hide it (for A/B-comparing the layout). The score
+    always uses offers regardless — this toggle is display-only."""
+    return os.environ.get("VINTED_SHOW_OFFERS", "1") != "0"
+
+
+def _offers_display(v: dict) -> str:
+    """Human read of the buyer-offer signal. '—' when we have no offer coverage
+    for this variant yet (offers are captured from item pages as fresh listings
+    are enriched, so coverage builds up over runs)."""
+    if v.get("offers_coverage", 0) <= 0:
+        return "—"
+    return str(v.get("offers", 0))
+
+
 def format_variant_card(variant_name: str, v: dict) -> str:
     """Client-requested summary-card layout for one variant — the concrete,
     numbers-first format he asked for in place of the raw table row."""
@@ -622,9 +693,13 @@ def format_variant_card(variant_name: str, v: dict) -> str:
         "",
         f"🔥 Estimated Sales: {v['est_sales_30d']}/month",
         f"⚡ Average Time to Sell: {vel}",
+    ]
+    if _show_offers():
+        lines.append(f"📈 Buyer Demand (offers): {_offers_display(v)}")
+    lines += [
         f"🏷️ Average Selling Price: {price}",
         f"👥 Active Listings: {v['competition']}",
-        f"📈 Trend: {v['trend']}",
+        f"📊 Sales Trend: {v['trend']}",
         f"🏆 Competition: {v['competition_level']}",
         f"🎯 Opportunity: {opportunity_label(v['score'])}",
     ]
@@ -644,6 +719,8 @@ def save_variant_report(variants: list, output_file: str = "variant_report.csv")
         "competition_level",
         "trend",
         "avg_price",
+        "offers",
+        "offers_coverage",
         "confidence",
         "sold_tracked",
         "score",
@@ -668,7 +745,7 @@ def _publish_ts_from_page(page, item_id: str) -> dict:
     """
     url = f"https://www.vinted.fr/items/{item_id}"
     api_data, handler = fr.intercept_item_api(page)
-    info = {"created_at_ts": None, "brand": "", "color": ""}
+    info = {"created_at_ts": None, "brand": "", "color": "", "offers": None}
     try:
         resp = page.goto(url, timeout=30000, wait_until="domcontentloaded")
         if resp is not None and resp.status == 429:
@@ -683,6 +760,25 @@ def _publish_ts_from_page(page, item_id: str) -> dict:
             ld = fr.extract_jsonld(html)
             info["brand"] = ld.get("brand") or ""
             info["color"] = ld.get("color") or ""
+        except Exception:
+            pass
+
+        # Buyer offers — the early-demand signal ("N acheteurs ont envoyé une offre").
+        # Same page load we already did for publish time, so this is free. Reuses the
+        # Phase 3 OFFER_PATTERNS. 0 = page loaded but no offer banner (a real zero);
+        # None (default) = we couldn't read it.
+        try:
+            body_text = page.locator("body").inner_text(timeout=3000)
+            n = 0
+            for pattern in fr.OFFER_PATTERNS:
+                m = re.search(pattern, body_text, re.IGNORECASE | re.DOTALL)
+                if m:
+                    n = int(m.group(1))
+                    break
+            # Sanity bound: a real listing has at most a handful of offers. A huge
+            # value means the regex latched onto a stray number, not the offer
+            # banner — discard it rather than let it pollute the demand score.
+            info["offers"] = n if 0 <= n <= 500 else 0
         except Exception:
             pass
 
@@ -792,6 +888,9 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
                     row["brand"] = info["brand"]
                 if info.get("color") and not row.get("color"):
                     row["color"] = info["color"]
+                if info.get("offers") is not None:
+                    row["offers"] = info["offers"]
+                    row["offers_seen_at"] = _fmt(datetime.now(timezone.utc))
                 row["variant"] = build_variant(
                     row.get("title", ""), row.get("brand", ""), row.get("color", "")
                 )
@@ -856,19 +955,28 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
         print(f"\n  ════ TOP OPPORTUNITY ════")
         print("  " + format_variant_card(f"{keyword} {variants[0]['variant']}", variants[0])
               .replace("\n", "\n  "))
+        show_off = _show_offers()
         print(f"\n  ════ PRODUCT VARIANTS — market data ════")
-        print(f"  {'variant':<17}{'sales/30d':>10}{'demand':>8}{'velocity':>9}"
-              f"{'competition':>13}{'trend':>11}{'price':>7}{'conf':>7}")
+        header = (f"  {'variant':<17}{'sales/30d':>10}{'demand':>8}{'velocity':>9}"
+                  f"{'competition':>13}{'trend':>11}{'price':>7}")
+        if show_off:
+            header += f"{'offers':>8}"
+        header += f"{'conf':>7}"
+        print(header)
         for v in variants[:12]:
             md = v["median_days_to_sell"]
             vel = f"{md}d" if md is not None else "—"
             price = f"{v['avg_price']}€" if v["avg_price"] is not None else "—"
             comp = f"{v['competition_level']}({v['competition']})"
-            print(
+            line = (
                 f"  {v['variant'][:17]:<17}{('~' + str(v['est_sales_30d'])):>10}"
                 f"{v['demand_level']:>8}{vel:>9}"
-                f"{comp:>13}{v['trend']:>11}{price:>7}{v['confidence']:>7}"
+                f"{comp:>13}{v['trend']:>11}{price:>7}"
             )
+            if show_off:
+                line += f"{_offers_display(v):>8}"
+            line += f"{v['confidence']:>7}"
+            print(line)
         print(f"\n  📊 Data transparency:")
         print(f"     • Estimated sales — MARKETPLACE-WIDE sales of that exact variant, "
               f"calculated from listing turnover over the last {window_days} days "
@@ -879,6 +987,10 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
         print(f"     • Competition — active listings of that exact variant now (Calculated)")
         print(f"     • Trend — vs the previous run (Signal); 'Building' until 2+ runs exist")
         print(f"     • Price — average of current listing prices (Calculated)")
+        if show_off:
+            print(f"     • Offers — total live buyer offers across the variant's active "
+                  f"listings (early-demand Signal; '—' until item pages are enriched, "
+                  f"builds up over runs)")
         print(f"     • Confidence reflects sample size + tracking length")
         print(f"     • Updated: {variants[0]['last_updated']}")
 
