@@ -1,0 +1,7 @@
+# Phase 5 — visual variant recognition (image_cluster.py). Only needed if you turn on
+# VINTED_VISUAL=1. Not required for Phase 1-4 — install this only when Phase 5 is enabled.
+torch
+transformers
+pillow
+scikit-learn
+numpy

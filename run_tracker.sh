@@ -14,6 +14,11 @@ cd "$SCRIPT_DIR" || exit 1
 
 export VINTED_AUTOMATED=1        # never block on a login prompt
 export VINTED_TRACK_WORKERS=2    # gentle — avoids Vinted's rate limiting
+# Cross-border tracking (Phase 4 delivery, 2026-07-08): your Vinted account's shipping
+# zone — France plus the 9 countries buyers reach you from. FR-only tracking was
+# missing ~45% of the listings actually visible in this zone. Remove domains here if
+# you only want to track a subset.
+export VINTED_DOMAINS="fr,be,lu,nl,de,at,es,pt,it,ie"
 
 # Confirm the logged-in debug-Chrome is up; if not, stop (don't corrupt anything).
 if ! curl -s -m 3 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then

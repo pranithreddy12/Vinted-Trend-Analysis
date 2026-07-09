@@ -923,13 +923,18 @@ def main():
         cookies, token = fr.get_cookies_and_token(context, page)
         print(f"   🔑 Access token: {'found' if token else 'NOT FOUND'}")
 
-        # Cross-border coverage (opt-in): VINTED_DOMAINS="fr,de,it,es,be,nl,pt,at"
-        # merges catalogs across the client's shipping-zone domains by listing id.
-        # Default is FR-only (unchanged behavior) — FR alone misses ~45% of the
-        # listings actually visible to a seller shipping cross-border (measured
-        # 2026-07-07 on stanley quencher: 287 on .fr vs 522 union across 8 domains).
+        # Cross-border coverage: VINTED_DOMAINS overrides which Vinted country domains
+        # get merged (by listing id) into one catalog fetch. Defaults to the client's
+        # full shipping zone (Phase 4 delivery, 2026-07-08) — FR alone was missing ~45%
+        # of the listings actually visible there (measured on stanley quencher: 287 on
+        # .fr vs 522 union across 8 domains). Set VINTED_DOMAINS="fr" to go back to
+        # France-only.
         domains = tuple(
-            d.strip() for d in os.environ.get("VINTED_DOMAINS", "fr").split(",") if d.strip()
+            d.strip()
+            for d in os.environ.get(
+                "VINTED_DOMAINS", "fr,be,lu,nl,de,at,es,pt,it,ie"
+            ).split(",")
+            if d.strip()
         )
         print(f"\n🔍 Fetching complete active catalog for: {keyword}"
               + (f"  (domains: {', '.join(domains)})" if len(domains) > 1 else ""))

@@ -13,6 +13,10 @@ cd /d "%~dp0"
 
 set VINTED_AUTOMATED=1
 set VINTED_TRACK_WORKERS=2
+REM Cross-border tracking (Phase 4 delivery, 2026-07-08): your Vinted account's shipping
+REM zone - France plus the 9 countries buyers reach you from. FR-only tracking was
+REM missing ~45%% of the listings actually visible in this zone.
+set VINTED_DOMAINS=fr,be,lu,nl,de,at,es,pt,it,ie
 
 REM Confirm the logged-in debug-Chrome is up; if not, stop (don't corrupt anything).
 powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3; exit 0 } catch { exit 1 }"
