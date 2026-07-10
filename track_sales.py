@@ -303,31 +303,124 @@ def normalize_color(color: str) -> str:
     return COLOR_BUCKETS.get(first, first)
 
 
+# Known bottle sizes → canonical label. A listing's capacity is converted to
+# millilitres and snapped to the nearest of these within tolerance, so the SAME
+# physical size written different ways (40oz, 1.18L, 1.2L, 1.19L) collapses to one
+# variant instead of fragmenting the demand across four. (40oz = 1183ml, so those
+# are all the same product.) Sizes outside tolerance keep a rounded-litre label.
+_CANONICAL_SIZES_ML = [
+    (414, "14oz"), (473, "16oz"), (591, "20oz"), (709, "24oz"),
+    (887, "30oz"), (1183, "40oz"), (1419, "48oz"), (1892, "64oz"),
+]
+_CAP_UNIT_TO_ML = {"oz": 29.5735, "l": 1000.0, "cl": 10.0, "ml": 1.0}
+_CAP_PARSE_RE = re.compile(r"^(\d+(?:[.,]\d+)?)(l|oz|ml|cl)$")
+
+
+def canonical_capacity(token: str) -> str:
+    """Normalise a capacity token to a canonical size label.
+
+    e.g. '40oz', '1.18l', '1.2l', '1.19l' → '40oz'; '0.89l', '887ml' → '30oz'.
+    Returns '' if the token isn't a capacity. This fixes same-size-different-unit
+    variant fragmentation (client feedback 2026-07-11)."""
+    m = _CAP_PARSE_RE.match((token or "").strip().lower().replace(",", "."))
+    if not m:
+        return ""
+    try:
+        ml = float(m.group(1)) * _CAP_UNIT_TO_ML[m.group(2)]
+    except (ValueError, KeyError):
+        return ""
+    if ml <= 0:
+        return ""
+    for known_ml, label in _CANONICAL_SIZES_ML:
+        if abs(ml - known_ml) / known_ml <= 0.045:  # within 4.5% → same size
+            return label
+    # Not a standard bottle size — keep a stable rounded-litre label.
+    return f"{round(ml / 1000, 2)}l"
+
+
+# Stanley product LINES. Same size+colour on two different lines (a Quencher 40oz
+# Pink vs a Flip Straw 40oz Pink) are different sellable products, so the line is
+# added to the variant when the title names it. FlowState / H2.0 are the Quencher's
+# own sub-branding, not a separate line → they map to Quencher. Only applies when a
+# line word is actually present (~47% of Stanley titles); the rest need the photo
+# (Phase 5) to identify the line — the title alone ("Stanley Cup") can't.
+_MODEL_PATTERNS = [
+    ("Quencher", re.compile(r"quencher|flow\s?state|h2\.?0(?:\b|\s)", re.I)),
+    ("Flip Straw", re.compile(r"flip\s?straw|flip jet|paille", re.I)),
+    ("IceFlow", re.compile(r"ice\s?flow", re.I)),
+    ("Adventure", re.compile(r"adventure", re.I)),
+    ("Go Tumbler", re.compile(r"\bgo\b\s*(tumbler|quencher)|gotumbler", re.I)),
+    ("Classic", re.compile(r"classic|legendary|thermos", re.I)),
+]
+
+
+def detect_model(title: str) -> str:
+    """Return the product LINE named in the title (e.g. 'Quencher', 'Flip Straw'),
+    or '' if none is named. Text-only — the ~half of listings with bare titles
+    ('Stanley cup') can't be resolved here; that's what Phase 5 image recognition
+    is for."""
+    t = title or ""
+    for label, pat in _MODEL_PATTERNS:
+        if pat.search(t):
+            return label
+    return ""
+
+
+# oz→metric companion for the display label, so the client sees both units at once
+# (he referred to sizes in both, e.g. "40oz" and "1.18L").
+_CAP_METRIC = {
+    "14oz": "0.41L", "16oz": "0.47L", "20oz": "0.59L", "24oz": "0.71L",
+    "30oz": "0.89L", "40oz": "1.18L", "48oz": "1.42L", "64oz": "1.9L",
+}
+
+
+def product_display_name(model: str, base: str, brand: str = "Stanley") -> str:
+    """Human, sellable product name for the card/report, e.g.
+    'Stanley Quencher 40oz (1.18L) Pink'. base is 'cap colour' (or ''). No
+    duplicate brand/model words. Falls back gracefully when the line is unknown."""
+    if not base:
+        return ""
+    parts = base.split()
+    cap = parts[0] if parts else ""
+    colour = " ".join(parts[1:]).title() if len(parts) > 1 else ""
+    cap_disp = f"{cap} ({_CAP_METRIC[cap]})" if cap in _CAP_METRIC else cap
+    bits = [brand]
+    if model:
+        bits.append(model)
+    if cap_disp:
+        bits.append(cap_disp)
+    if colour:
+        bits.append(colour)
+    return " ".join(bits)
+
+
 def build_variant(title: str, brand: str, color: str) -> str:
     """
-    Build a product-variant signature = capacity + canonical colour,
-    e.g. "1.18l pink". Brand is constant within one tracked keyword, so it's
-    omitted to keep grouping consistent across all listings. Capacity and colour
-    are read from the title (free, full coverage), with the structured page
-    colour preferred when available. Returns "" if neither can be determined.
+    Build the BASE variant key = canonical capacity + colour, e.g. "40oz pink".
+    Capacity is unit-normalised (40oz ≡ 1.18L ≡ 1.2L → "40oz") so the same size
+    written different ways doesn't fragment into separate variants. Colour prefers
+    the structured page attribute, falling back to a colour word in the title.
+    Returns "" if capacity+colour can't both be determined (the pair is the minimum
+    for a real variant).
+
+    The product LINE (Quencher / Flip Straw / …) is layered on in variant_analysis,
+    not here, because assigning it correctly needs the global picture — a bare
+    "Stanley cup 40oz" title names no line, so it's imputed to the dominant line at
+    that size+colour rather than fragmenting off on its own.
     """
-    parts = []
-    cap = next(
-        (t for t in fr._tokenize((title or "").lower()) if fr.CAP_RE.match(t)), ""
-    )
-    if cap:
-        parts.append(cap)
+    toks = fr._tokenize((title or "").lower())
+    cap = ""
+    for t in toks:
+        cap = canonical_capacity(t)
+        if cap:
+            break
     col = normalize_color(color)
     if not col:
         # No structured colour — look for a colour word in the title.
-        toks = fr._tokenize((title or "").lower())
         col = next((COLOR_BUCKETS[t] for t in toks if t in COLOR_BUCKETS), "")
-    # A true variant needs BOTH capacity and colour, else partial/overlapping
-    # groups fragment the same product. Listings missing one are left ungrouped
-    # (the structured page colour fills colour in as enrichment progresses).
-    if cap and col:
-        return f"{cap} {col}"
-    return ""
+    if not (cap and col):
+        return ""
+    return f"{cap} {col}"
 
 
 def compute_variant_opportunity(
@@ -573,6 +666,7 @@ def variant_analysis(
     updated = now.strftime("%Y-%m-%d %H:%M UTC")
     prev_snap = load_prev_variant_snapshot(now.strftime("%Y-%m-%d"), slug)
     vis_map, vis_labels = _load_visual_variants(visual_slug)
+    brand = slug.split("_")[0].title() if slug else ""
 
     firsts = []
     for r in tracking.values():
@@ -584,20 +678,43 @@ def variant_analysis(
         max(1.0, (now - min(firsts)).total_seconds() / 86400) if firsts else 1.0
     )
 
+    # Pass 1 — per base key (capacity+colour), find the dominant product LINE among
+    # the listings that actually name one. A bare "Stanley cup 40oz" title names no
+    # line; rather than fragment it into its own variant, we impute the dominant line
+    # at that size+colour (for Stanley the 40oz is overwhelmingly the Quencher).
+    # Where two lines genuinely coexist at one size+colour (e.g. Quencher vs Flip
+    # Straw 40oz Pink), the explicitly-named minority still splits off correctly.
+    model_votes = {}
+    for r in tracking.values():
+        base = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""))
+        if not base:
+            continue
+        m = detect_model(r.get("title", ""))
+        if m:
+            model_votes.setdefault(base, collections.Counter())[m] += 1
+    dominant_model = {
+        base: votes.most_common(1)[0][0] for base, votes in model_votes.items()
+    }
+
     groups = {}
     for r in tracking.values():
-        v = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""))
-        if not v:
+        base = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""))
+        if base:
+            model = detect_model(r.get("title", "")) or dominant_model.get(base, "")
+            v = f"{model.lower()} {base}".strip() if model else base
+        else:
             # Phase 5 fallback: no text variant — group by what the PHOTO shows.
             cid = vis_map.get(str(r.get("id", "")))
             if not cid:
                 continue
             label = (vis_labels.get(cid) or "").strip()
             v = f"📷 {cid}" + (f" · {label[:40]}" if label else "")
+            model, base = "", ""
         g = groups.setdefault(
             v,
             {"active": 0, "gone": 0, "lifes": [], "prices": [],
-             "offers_total": 0, "offers_listings": 0},
+             "offers_total": 0, "offers_listings": 0,
+             "model": model, "base": base},
         )
         if r["status"] == "active":
             g["active"] += 1
@@ -650,9 +767,11 @@ def variant_analysis(
             g["active"], est_30d, med_days, g["offers_total"],
             offers_measured=g["offers_listings"] > 0,
         )
+        product = product_display_name(g.get("model", ""), g.get("base", ""), brand)
         out.append(
             {
                 "variant": v,
+                "product": product or v,
                 "est_sales_30d": est_30d,
                 "demand_level": demand_label(est_30d),
                 "median_days_to_sell": med_days,
@@ -707,12 +826,14 @@ def _offers_display(v: dict) -> str:
 
 def format_variant_card(variant_name: str, v: dict) -> str:
     """Client-requested summary-card layout for one variant — the concrete,
-    numbers-first format he asked for in place of the raw table row."""
+    numbers-first format he asked for in place of the raw table row. variant_name
+    is a fallback title; the variant's own resolved product name is preferred."""
     md = v["median_days_to_sell"]
     vel = f"{md} days" if md is not None else "not yet measured"
     price = f"€{v['avg_price']}" if v["avg_price"] is not None else "—"
+    title = v.get("product") or variant_name.title()
     lines = [
-        f"{variant_name.title()}",
+        f"{title}",
         "",
         f"🔥 Estimated Sales: {v['est_sales_30d']}/month",
         f"⚡ Average Time to Sell: {vel}",
@@ -734,6 +855,7 @@ def save_variant_report(variants: list, output_file: str = "variant_report.csv")
     if not variants:
         return None
     fields = [
+        "product",
         "variant",
         "est_sales_30d",
         "demand_level",
@@ -982,7 +1104,7 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
               .replace("\n", "\n  "))
         show_off = _show_offers()
         print(f"\n  ════ PRODUCT VARIANTS — market data ════")
-        header = (f"  {'variant':<17}{'sales/30d':>10}{'demand':>8}{'velocity':>9}"
+        header = (f"  {'variant':<21}{'sales/30d':>10}{'demand':>8}{'velocity':>9}"
                   f"{'competition':>13}{'trend':>11}{'price':>7}")
         if show_off:
             header += f"{'offers':>8}"
@@ -994,7 +1116,7 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
             price = f"{v['avg_price']}€" if v["avg_price"] is not None else "—"
             comp = f"{v['competition_level']}({v['competition']})"
             line = (
-                f"  {v['variant'][:17]:<17}{('~' + str(v['est_sales_30d'])):>10}"
+                f"  {v['variant'][:21]:<21}{('~' + str(v['est_sales_30d'])):>10}"
                 f"{v['demand_level']:>8}{vel:>9}"
                 f"{comp:>13}{v['trend']:>11}{price:>7}"
             )

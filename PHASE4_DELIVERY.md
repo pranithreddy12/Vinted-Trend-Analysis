@@ -120,6 +120,18 @@ over each month.
 time-to-sell across all sellers of that variant. If you consistently sell faster than
 that, it means you're outperforming the average listing, not that the number is wrong.
 
+**Product identification: line + size + colour.** Each variant now carries the product
+line where the listings name it, so you see "Stanley Quencher 40oz (1.18L) Pink" rather
+than just "40oz Pink", and a Flip Straw is kept separate from a Quencher of the same size
+and colour. Two things worth knowing: (1) the same physical size written different ways —
+40oz, 1.18L, 1.2L — is now treated as one variant instead of being split, so the sales
+numbers are no longer scattered across duplicates (this alone roughly doubled the measured
+sales on the Pink 40oz). (2) Where a listing's title doesn't name the line at all (a lot of
+sellers just write "Stanley Cup"), we assign it to the dominant line for that size and
+colour. That's reliable for a range like Stanley where the size mostly implies the line,
+but it's the honest limit of what titles can tell us — telling two lines apart from a bare
+title and a photo alone is exactly what the image-recognition phase is built to do.
+
 **Confidence** (High/Medium/Low) reflects sample size and how long the variant has been
 tracked. It only reaches High after roughly a month of continuous tracking with enough
 completed sales — trust Low/Medium numbers as directional, not final, until then.
