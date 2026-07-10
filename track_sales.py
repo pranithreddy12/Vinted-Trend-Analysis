@@ -478,13 +478,21 @@ def variant_trend(cur_est: float, prev_est) -> str:
     return "Stable"
 
 
-def save_variant_snapshot(variants: list) -> str | None:
-    """Persist today's per-variant sales estimate so the next run can show a trend."""
+def save_variant_snapshot(variants: list, slug: str = "") -> str | None:
+    """Persist today's per-variant sales estimate so the next run can show a trend.
+
+    Snapshots are namespaced PER PRODUCT (`variants_<slug>_<date>.csv`). They used to
+    share one `variants_<date>.csv`, which meant run_tracker — looping over every
+    keyword in tracked_keywords.txt — had each product overwrite the previous one's
+    snapshot, so every product but the last compared its sales against a different
+    product's numbers. Only one keyword was tracked, so it never surfaced.
+    """
     if not variants:
         return None
     os.makedirs(TRACK_DIR, exist_ok=True)
     date = datetime.now().strftime("%Y-%m-%d")
-    path = os.path.join(TRACK_DIR, f"variants_{date}.csv")
+    prefix = f"variants_{slug}_" if slug else "variants_"
+    path = os.path.join(TRACK_DIR, f"{prefix}{date}.csv")
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["variant", "est_sales_30d"])
@@ -493,15 +501,24 @@ def save_variant_snapshot(variants: list) -> str | None:
     return path
 
 
-def load_prev_variant_snapshot(exclude_date: str) -> dict:
-    """Load the most recent prior per-variant snapshot → {variant: est_sales_30d}."""
+def load_prev_variant_snapshot(exclude_date: str, slug: str = "") -> dict:
+    """Load this product's most recent prior snapshot → {variant: est_sales_30d}.
+
+    Scoped to `slug` so a multi-product watch-list can't cross-contaminate trends
+    (see save_variant_snapshot). A legacy un-namespaced `variants_<date>.csv` is
+    ignored — the affected product simply shows "Building" for one run, then
+    resumes on its own namespaced history.
+    """
     if not os.path.isdir(TRACK_DIR):
         return {}
+    prefix = f"variants_{slug}_" if slug else "variants_"
     files = sorted(
         fn
         for fn in os.listdir(TRACK_DIR)
-        if fn.startswith("variants_") and fn.endswith(".csv")
-        and fn != f"variants_{exclude_date}.csv"
+        if fn.startswith(prefix) and fn.endswith(".csv")
+        and fn != f"{prefix}{exclude_date}.csv"
+        # Without a slug, don't sweep up other products' namespaced snapshots.
+        and (slug or fn[len("variants_"):-len(".csv")].count("_") == 0)
     )
     if not files:
         return {}
@@ -534,12 +551,18 @@ def _load_visual_variants(slug: str) -> tuple[dict, dict]:
 
 
 def variant_analysis(
-    tracking: dict, now: datetime | None = None, visual_slug: str | None = None
+    tracking: dict,
+    now: datetime | None = None,
+    visual_slug: str | None = None,
+    slug: str = "",
 ):
     """
     Aggregate per-variant turnover into the concrete metrics the SaaS shows:
     estimated sales/30d, sales velocity (days), competition level, market trend,
     average price, confidence, and last-updated. Returns (sorted list, window_days).
+
+    slug: this product's keyword slug — scopes the trend comparison to this
+    product's own snapshot history (see save_variant_snapshot).
 
     visual_slug (Phase 5): keyword slug whose visual-variant index should fill in
     groupings for listings the text tokenizer can't parse (no capacity+colour in
@@ -548,7 +571,7 @@ def variant_analysis(
     """
     now = now or datetime.now(timezone.utc)
     updated = now.strftime("%Y-%m-%d %H:%M UTC")
-    prev_snap = load_prev_variant_snapshot(now.strftime("%Y-%m-%d"))
+    prev_snap = load_prev_variant_snapshot(now.strftime("%Y-%m-%d"), slug)
     vis_map, vis_labels = _load_visual_variants(visual_slug)
 
     firsts = []
@@ -950,7 +973,9 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
         print(f"  Sell-through: {sell_through}% of tracked listings gone")
 
     # Per-variant market data — the concrete Phase 4 output (no abstract score lead).
-    variants, window_days = variant_analysis(tracking, visual_slug=_slug(keyword))
+    variants, window_days = variant_analysis(
+        tracking, visual_slug=_slug(keyword), slug=_slug(keyword)
+    )
     if variants:
         print(f"\n  ════ TOP OPPORTUNITY ════")
         print("  " + format_variant_card(f"{keyword} {variants[0]['variant']}", variants[0])
@@ -1101,11 +1126,13 @@ def main():
     report(keyword, tracking, newly, disappeared, first_run)
     print(f"\n💾 Tracking state saved: {path}")
 
-    variants, _ = variant_analysis(tracking, visual_slug=_slug(keyword))
+    variants, _ = variant_analysis(
+        tracking, visual_slug=_slug(keyword), slug=_slug(keyword)
+    )
     vpath = save_variant_report(variants, f"variant_report_{_slug(keyword)}.csv")
     if vpath:
         print(f"💾 Variant report saved: {vpath} ({len(variants)} variants)")
-    save_variant_snapshot(variants)  # enables the trend column on the next run
+    save_variant_snapshot(variants, _slug(keyword))  # enables next run's trend column
 
 
 if __name__ == "__main__":
