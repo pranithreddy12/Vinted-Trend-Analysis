@@ -389,6 +389,96 @@ def fetch_catalog_multi_domain(
 # ─────────────────────────────────────────
 
 
+# ── Product-identity search filtering (client feedback 2026-07-11) ──────────────
+# Vinted's search_text does loose token matching, so a natural-language query like
+# "STANLEY gourde Quencher 1.18l rose" pulls in every generic 'gourde'/'rose' (mostly
+# Tupperware) and buries the real Stanley Quenchers — 9 Stanley / 101 results in the
+# client's test. Two fixes: (1) normalise the query to the terms Vinted matches well
+# (brand + family + colour, dropping generic container words and the size number →
+# "stanley quencher rose", which returns ~191 Stanley / 63 pink Quenchers); then
+# (2) filter the results back to the product's identity (brand, size, colour).
+_GENERIC_CONTAINER_WORDS = {
+    "gourde", "gourdes", "bouteille", "bouteilles", "bottle", "botella", "botellas",
+    "borraccia", "drinkfles", "flasche", "trinkflasche", "thermobecher", "flask",
+    "cup", "gobelet", "gobelets", "mug", "tasse", "thermos", "isotherme", "isothermé",
+    "water", "agua", "eau", "drink", "tumbler", "becher", "vaso", "taza", "tazza",
+    "verre", "borraccia",
+}
+_SIZE_TOKEN_RE = re.compile(r"^\d+(?:[.,]\d+)?(?:l|oz|ml|cl)?$")
+
+
+def normalize_search_query(keyword: str) -> str:
+    """Reduce a natural-language query to the tokens Vinted's search handles well:
+    drop generic container words ('gourde', 'bouteille', …) and standalone size
+    tokens ('1.18l', '40oz', '1.18'), keeping brand + family + colour. Never returns
+    empty (falls back to the original). e.g.
+    'STANLEY gourde Quencher 1.18l rose' → 'stanley quencher rose'."""
+    kept = [
+        t for t in keyword.lower().split()
+        if t not in _GENERIC_CONTAINER_WORDS and not _SIZE_TOKEN_RE.match(t)
+    ]
+    return " ".join(kept).strip() or keyword
+
+
+def filter_by_identity(items: list, keyword: str) -> tuple[list, int]:
+    """Keep only items matching the query's product identity — brand, size, colour.
+    Removes off-brand noise (Tupperware, generic bottles) and explicit size/colour
+    mismatches, while keeping listings that simply don't state a size/colour (their
+    identity is unknown, not contradicted). Returns (kept_items, n_dropped).
+
+    Reuses track_sales' capacity/colour/brand logic via a lazy import (no import
+    cycle: track_sales imports fetch_results, not the reverse, and this runs at
+    call time). Conservative — only filters on signals the query actually specifies."""
+    import track_sales as ts
+
+    qtoks = set(re.findall(r"[a-z0-9.]+", keyword.lower()))
+
+    # Intended brand(s) = query tokens that actually appear as a brand on results.
+    # Auto-detects "stanley" without a hardcoded brand list; a brandless query
+    # (no query token matches any result brand) simply skips the brand gate.
+    brands_present = set()
+    for it in items:
+        b = (it.get("brand") or it.get("brand_title") or "").strip().lower()
+        if b:
+            brands_present.update(b.split())
+            brands_present.add(b)
+    intended_brands = {t for t in qtoks if t in brands_present}
+
+    intent_cap = next((c for c in (ts.canonical_capacity(t) for t in qtoks) if c), "")
+    intent_col = next((ts.COLOR_BUCKETS[t] for t in qtoks if t in ts.COLOR_BUCKETS), "")
+
+    def item_cap(tl):
+        for tok in ts.fr._tokenize(tl):
+            c = ts.canonical_capacity(tok)
+            if c:
+                return c
+        return ""
+
+    kept = []
+    for it in items:
+        tl = (it.get("title") or "").lower()
+        b = (it.get("brand") or it.get("brand_title") or "").strip().lower()
+        if intended_brands:
+            brand_ok = any(t == b or t in b.split() for t in intended_brands) or any(
+                t in tl for t in intended_brands
+            )
+            if not brand_ok:
+                continue
+        if intent_cap:
+            ic = item_cap(tl)
+            if ic and ic != intent_cap:  # explicit DIFFERENT size → drop
+                continue
+        if intent_col:
+            icol = next(
+                (ts.COLOR_BUCKETS[tok] for tok in ts.fr._tokenize(tl)
+                 if tok in ts.COLOR_BUCKETS), ""
+            )
+            if icol and icol != intent_col:  # explicit DIFFERENT colour → drop
+                continue
+        kept.append(it)
+    return kept, len(items) - len(kept)
+
+
 EXCLUDE_TERMS = [
     "pin",
     "pins",
@@ -1807,15 +1897,30 @@ def main():
                 else:
                     kw, catalog_id = entry, None
 
-                print(f"\n🔍 Fetching catalog for: {kw}")
+                # Refine the query to what Vinted's search matches well (brand +
+                # family + colour), then filter results back to the product identity
+                # so off-brand / wrong-size / wrong-colour noise is removed. Toggle
+                # off with VINTED_IDENTITY_FILTER=0.
+                identity_on = os.environ.get("VINTED_IDENTITY_FILTER", "1") != "0"
+                search_q = normalize_search_query(kw) if identity_on else kw
+                if identity_on and search_q != kw:
+                    print(f"\n🔍 Fetching catalog for: {kw}")
+                    print(f"   🔎 refined search query → \"{search_q}\"")
+                else:
+                    print(f"\n🔍 Fetching catalog for: {kw}")
                 raw = fetch_catalog_via_requests(
-                    kw,
+                    search_q,
                     cookies_dict,
                     access_token,
                     catalog_id=catalog_id,
                     max_pages=max_pages,
                 )
                 extracted = extract_data(raw, kw)
+                if identity_on:
+                    extracted, dropped = filter_by_identity(extracted, kw)
+                    if dropped:
+                        print(f"   🧹 identity filter: kept {len(extracted)}, "
+                              f"dropped {dropped} off-identity (brand/size/colour)")
                 keyword_totals[kw] = len(extracted)  # true catalog size
                 print(f"   → {len(extracted)} items found")
 

@@ -81,6 +81,26 @@ output and in `variant_report_<product>.csv`.
 
 ---
 
+## Product-focused search (important)
+
+The tool now searches by product identity, not just raw keywords. When you type a
+natural query like "STANLEY gourde Quencher 1.18L rose", two things happen:
+
+1. **The query is refined** to what Vinted's search actually matches well — brand +
+   family + colour ("stanley quencher rose"). Generic words like "gourde" and the size
+   number are dropped from the *search*, because Vinted matches them loosely and floods
+   the results with unrelated bottles (in an earlier test, a query like that returned 47
+   Tupperware and only 7 Stanley). The refined query surfaces the real Stanley Quenchers.
+2. **Results are filtered back to the identity** you asked for — brand, size and colour.
+   Off-brand items (Tupperware, generic bottles), wrong sizes and wrong colours are
+   removed; listings that simply don't state a size or colour are kept (their identity is
+   unknown, not contradicted). On that same query this went from ~7% relevant to ~95%.
+
+The size is still fully respected — it's just applied as a filter on the results rather
+than shoved into Vinted's search box, because "40oz" and "1.18L" are the same size and
+Vinted's text search handles the number poorly. If you ever want the old raw-keyword
+behaviour, set `VINTED_IDENTITY_FILTER=0`.
+
 ## How to read the numbers (important)
 
 **Ranking is demand-first.** After your feedback, the opportunity score weighs the four

@@ -1195,14 +1195,25 @@ def main():
             ).split(",")
             if d.strip()
         )
+        # Refine the query + filter to product identity (client feedback 2026-07-11)
+        # so the tracker follows the actual product, not every generic 'gourde'.
+        # Toggle off with VINTED_IDENTITY_FILTER=0.
+        identity_on = os.environ.get("VINTED_IDENTITY_FILTER", "1") != "0"
+        search_q = fr.normalize_search_query(keyword) if identity_on else keyword
         print(f"\n🔍 Fetching complete active catalog for: {keyword}"
+              + (f'  → "{search_q}"' if identity_on and search_q != keyword else "")
               + (f"  (domains: {', '.join(domains)})" if len(domains) > 1 else ""))
         # Fetch ALL pages and disable the age-based early stop so the active set is
         # complete — otherwise items would look 'disappeared' just for being old.
         raw = fr.fetch_catalog_multi_domain(
-            keyword, cookies, token, domains=domains,
+            search_q, cookies, token, domains=domains,
             max_pages=None, stop_when_old_ratio=2.0,
         )
+        if identity_on:
+            raw, dropped = fr.filter_by_identity(raw, keyword)
+            if dropped:
+                print(f"   🧹 identity filter: kept {len(raw)}, dropped {dropped} "
+                      f"off-identity (brand/size/colour)")
         print(f"   → {len(raw)} active listings right now")
     # Auth session closed; the enrichment workers open their own CDP connections.
 
