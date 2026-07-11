@@ -91,15 +91,27 @@ natural query like "STANLEY gourde Quencher 1.18L rose", two things happen:
    number are dropped from the *search*, because Vinted matches them loosely and floods
    the results with unrelated bottles (in an earlier test, a query like that returned 47
    Tupperware and only 7 Stanley). The refined query surfaces the real Stanley Quenchers.
-2. **Results are filtered back to the identity** you asked for — brand, size and colour.
-   Off-brand items (Tupperware, generic bottles), wrong sizes and wrong colours are
-   removed; listings that simply don't state a size or colour are kept (their identity is
-   unknown, not contradicted). On that same query this went from ~7% relevant to ~95%.
+2. **Results are ranked by how closely they match** what you asked for, in tiers, so you
+   get the exact product first and still see the strong products around it:
+   - **Exact** — the product you searched (e.g. Stanley Quencher 40oz/1.18L Pink)
+   - **Same family, other variant** — same line, different size or colour
+   - **Same brand, other model** — e.g. Stanley Flip Straw, other Stanley models
+   - **Other** — generic bottles and other brands, kept last and capped so they don't flood
 
-The size is still fully respected — it's just applied as a filter on the results rather
-than shoved into Vinted's search box, because "40oz" and "1.18L" are the same size and
-Vinted's text search handles the number poorly. If you ever want the old raw-keyword
-behaviour, set `VINTED_IDENTITY_FILTER=0`.
+   So the noise (Tupperware, generic bottles) drops to the bottom, but you keep the
+   discovery power — the related Stanley winners are still in view, just ranked below the
+   exact match. On the earlier problem query this took the top of the list from ~7% relevant
+   to the exact Pink Quenchers leading, with the other strong Stanley variants right behind.
+
+The size is still fully respected — it's applied when ranking the results rather than shoved
+into Vinted's search box, because "40oz" and "1.18L" are the same size and Vinted's text
+search handles the number poorly. If you ever want the old raw-keyword behaviour, set
+`VINTED_IDENTITY_FILTER=0`.
+
+> Note on the strongest signals — "sells fastest", "sold in under 72 hours", real sales
+> velocity — those can't be read from a single search, because a listing leaves Vinted the
+> moment it sells. They come from the tracker running over time across the brand's variants.
+> This ranking gets sharper the longer the tracker runs.
 
 ## How to read the numbers (important)
 

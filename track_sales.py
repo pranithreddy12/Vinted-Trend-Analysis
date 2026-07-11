@@ -350,7 +350,9 @@ _MODEL_PATTERNS = [
     ("IceFlow", re.compile(r"ice\s?flow", re.I)),
     ("Adventure", re.compile(r"adventure", re.I)),
     ("Go Tumbler", re.compile(r"\bgo\b\s*(tumbler|quencher)|gotumbler", re.I)),
-    ("Classic", re.compile(r"classic|legendary|thermos", re.I)),
+    # NB: "thermos" is deliberately NOT here — it's the generic word for an insulated
+    # bottle in FR/DE/ES/IT, so it would mislabel any Stanley as the Classic line.
+    ("Classic", re.compile(r"\bclassic\b|legendary", re.I)),
 ]
 
 
@@ -1210,10 +1212,16 @@ def main():
             max_pages=None, stop_when_old_ratio=2.0,
         )
         if identity_on:
-            raw, dropped = fr.filter_by_identity(raw, keyword)
-            if dropped:
-                print(f"   🧹 identity filter: kept {len(raw)}, dropped {dropped} "
-                      f"off-identity (brand/size/colour)")
+            # Tiered relevance: track the brand's whole range (exact product +
+            # same-family variants + other same-brand models) so the variant report
+            # can surface the best-performing products around the search, not just
+            # the exact one. Drops only off-brand/generic listings (tier 4).
+            before = len(raw)
+            raw, tiers = fr.rank_by_identity(raw, keyword, drop_offbrand=True)
+            if before != len(raw):
+                print(f"   🎯 relevance: {tiers.get(1,0)} exact · {tiers.get(2,0)} "
+                      f"same-family · {tiers.get(3,0)} same-brand · dropped "
+                      f"{tiers.get(4,0)} off-brand")
         print(f"   → {len(raw)} active listings right now")
     # Auth session closed; the enrichment workers open their own CDP connections.
 

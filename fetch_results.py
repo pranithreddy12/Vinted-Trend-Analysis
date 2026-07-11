@@ -7,6 +7,7 @@ import logging
 import csv
 import json
 import statistics
+import collections
 import requests
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -420,22 +421,26 @@ def normalize_search_query(keyword: str) -> str:
     return " ".join(kept).strip() or keyword
 
 
-def filter_by_identity(items: list, keyword: str) -> tuple[list, int]:
-    """Keep only items matching the query's product identity — brand, size, colour.
-    Removes off-brand noise (Tupperware, generic bottles) and explicit size/colour
-    mismatches, while keeping listings that simply don't state a size/colour (their
-    identity is unknown, not contradicted). Returns (kept_items, n_dropped).
+def rank_by_identity(items: list, keyword: str, drop_offbrand: bool = False,
+                     offbrand_cap: int | None = None) -> tuple[list, dict]:
+    """Assign each item a RELEVANCE TIER vs the query's product identity and return
+    the items sorted best-first — keeping discovery power instead of hard-filtering
+    to the exact product (client vision 2026-07-11: "find the exact product AND the
+    high-performing relatives in the same market").
 
-    Reuses track_sales' capacity/colour/brand logic via a lazy import (no import
-    cycle: track_sales imports fetch_results, not the reverse, and this runs at
-    call time). Conservative — only filters on signals the query actually specifies."""
+    Tiers:
+      1 = exact product      (brand + family match, size/colour not contradicted)
+      2 = same family, other variant  (brand + family, different size or colour)
+      3 = same brand, other model     (brand match, e.g. Stanley Flip Straw)
+      4 = other brand / generic       (brand doesn't match)
+
+    Each item gets item['relevance_tier']. drop_offbrand removes tier 4 (used by the
+    tracker so it follows the brand's range); offbrand_cap keeps only the first N
+    tier-4 items (used by search so generics appear last but don't flood). Returns
+    (sorted_items, tier_counts). Reuses track_sales' identity logic via lazy import."""
     import track_sales as ts
 
     qtoks = set(re.findall(r"[a-z0-9.]+", keyword.lower()))
-
-    # Intended brand(s) = query tokens that actually appear as a brand on results.
-    # Auto-detects "stanley" without a hardcoded brand list; a brandless query
-    # (no query token matches any result brand) simply skips the brand gate.
     brands_present = set()
     for it in items:
         b = (it.get("brand") or it.get("brand_title") or "").strip().lower()
@@ -443,40 +448,66 @@ def filter_by_identity(items: list, keyword: str) -> tuple[list, int]:
             brands_present.update(b.split())
             brands_present.add(b)
     intended_brands = {t for t in qtoks if t in brands_present}
-
     intent_cap = next((c for c in (ts.canonical_capacity(t) for t in qtoks) if c), "")
     intent_col = next((ts.COLOR_BUCKETS[t] for t in qtoks if t in ts.COLOR_BUCKETS), "")
+    intent_family = ts.detect_model(keyword)
 
-    def item_cap(tl):
-        for tok in ts.fr._tokenize(tl):
+    def _first_cap(tl):
+        for tok in _tokenize(tl):
             c = ts.canonical_capacity(tok)
             if c:
                 return c
         return ""
 
-    kept = []
-    for it in items:
+    def _first_col(tl):
+        return next(
+            (ts.COLOR_BUCKETS[tok] for tok in _tokenize(tl) if tok in ts.COLOR_BUCKETS),
+            "",
+        )
+
+    def tier(it):
         tl = (it.get("title") or "").lower()
         b = (it.get("brand") or it.get("brand_title") or "").strip().lower()
-        if intended_brands:
-            brand_ok = any(t == b or t in b.split() for t in intended_brands) or any(
-                t in tl for t in intended_brands
-            )
-            if not brand_ok:
-                continue
-        if intent_cap:
-            ic = item_cap(tl)
-            if ic and ic != intent_cap:  # explicit DIFFERENT size → drop
-                continue
-        if intent_col:
-            icol = next(
-                (ts.COLOR_BUCKETS[tok] for tok in ts.fr._tokenize(tl)
-                 if tok in ts.COLOR_BUCKETS), ""
-            )
-            if icol and icol != intent_col:  # explicit DIFFERENT colour → drop
-                continue
-        kept.append(it)
-    return kept, len(items) - len(kept)
+        brand_ok = (
+            not intended_brands
+            or any(t == b or t in b.split() for t in intended_brands)
+            or any(t in tl for t in intended_brands)
+        )
+        if intended_brands and not brand_ok:
+            return 4
+
+        ic, icol = _first_cap(tl), _first_col(tl)
+        size_contra = intent_cap and ic and ic != intent_cap
+        col_contra = intent_col and icol and icol != intent_col
+        size_match = intent_cap and ic == intent_cap
+        fam = ts.detect_model(tl)  # '' if the title names no line
+
+        if intent_family and fam and fam != intent_family:
+            return 3  # explicitly a DIFFERENT line (e.g. Flip Straw when we want Quencher)
+        family_match = (not intent_family) or fam == intent_family
+        if family_match and not size_contra and not col_contra:
+            return 1  # named line matches, nothing contradicts → exact
+        # Line not named in the title: right size+colour makes it effectively exact,
+        # otherwise it's a plausible same-brand variant.
+        if not fam and size_match and not col_contra:
+            return 1
+        if not size_contra and not col_contra:
+            return 2
+        return 3
+
+    for it in items:
+        it["relevance_tier"] = tier(it)
+    counts = dict(collections.Counter(it["relevance_tier"] for it in items))
+
+    if drop_offbrand:
+        items = [it for it in items if it["relevance_tier"] < 4]
+    elif offbrand_cap is not None:
+        core = [it for it in items if it["relevance_tier"] < 4]
+        tail = [it for it in items if it["relevance_tier"] == 4][:offbrand_cap]
+        items = core + tail
+    # Stable sort by tier keeps Vinted's newest-first order within each tier.
+    items.sort(key=lambda it: it["relevance_tier"])
+    return items, counts
 
 
 EXCLUDE_TERMS = [
@@ -1917,10 +1948,14 @@ def main():
                 )
                 extracted = extract_data(raw, kw)
                 if identity_on:
-                    extracted, dropped = filter_by_identity(extracted, kw)
-                    if dropped:
-                        print(f"   🧹 identity filter: kept {len(extracted)}, "
-                              f"dropped {dropped} off-identity (brand/size/colour)")
+                    # Tiered relevance: lead with the exact product, then same-brand
+                    # relatives (other Quencher variants, Flip Straw, …), then a
+                    # capped tail of generics/other brands — keeps discovery instead
+                    # of hard-filtering to only the exact product.
+                    extracted, tiers = rank_by_identity(extracted, kw, offbrand_cap=15)
+                    print(f"   🎯 relevance: {tiers.get(1,0)} exact · "
+                          f"{tiers.get(2,0)} same-family · {tiers.get(3,0)} same-brand · "
+                          f"{tiers.get(4,0)} other")
                 keyword_totals[kw] = len(extracted)  # true catalog size
                 print(f"   → {len(extracted)} items found")
 
