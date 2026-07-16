@@ -21,6 +21,14 @@ Goal (client): from a listing photo, produce a complete, Google-verifiable title
   across 4 Stanley lines (226 real photos). Confusions are the visually-similar tumblers
   (Quencher↔Flip Straw↔IceFlow); Classic (green thermos) separates cleanly.
 
+**Accessory guard (2026-07-14):** carry-all bags, insulated sleeves, lids and straws are
+not the product but slipped through — a bag titled "All Day Quencher Carry-All" (title has
+the line word) and a "Housse isotherme" sleeve (photo shows a bottle inside). Two-layer
+guard: a multilingual title-keyword gate (`ACCESSORY_TERMS`) + a coarse zero-shot
+accessory-vs-bottle image check (`_is_accessory_image` — CLIP handles bottle-vs-bag easily,
+unlike the fine line-vs-line call). Flagged listings get `is_accessory=True` and are skipped
+from the product view rather than mislabelled.
+
 **Design = TITLE-FIRST, image as the fallback:**
 - Line: from the title when the seller names it (ground truth); the image only fills the
   line when the title is silent AND the top-2 prototype margin clears `IMAGE_MARGIN_MIN`

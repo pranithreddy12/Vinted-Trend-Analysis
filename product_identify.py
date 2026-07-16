@@ -82,6 +82,37 @@ COLOUR_DISPLAY = {
 IMAGE_MARGIN_MIN = 0.010
 PROTO_MIN_EXAMPLES = 5     # don't trust a prototype built from fewer than this
 
+# Accessories are NOT the product — a carry-all bag, an insulated sleeve, a lid, a
+# straw, jibbitz. They slip through two ways: the title contains the line word (e.g.
+# "All Day Quencher Carry-All" is a bag), or the photo shows a bottle inside a sleeve.
+# Guard both: a title-keyword gate (multilingual) and an "accessory" reject prototype
+# added to the image classifier so a sleeve/bag photo out-scores the real lines.
+ACCESSORY_TERMS = [
+    "carry all", "carry-all", "carryall", "housse", "porte-gobelet", "porte gobelet",
+    "sleeve", "pouch", "sac", "bag", "tote", "bandoulière", "bandouliere", "strap",
+    "lid", "couvercle", "deckel", "tapa", "coperchio", "straw only", "paille seule",
+    "jibbitz", "sticker", "autocollant", "boot", "protector", "protège", "protege",
+    "coaster", "sous-verre", "keychain", "porte-clé", "porte cle",
+    "holder", "cup holder", "porte-gourde", "tragetasche", "hülle", "custodia",
+]
+ACCESSORY_REJECT_PROMPTS = [
+    "a fabric carrying bag or tote for a bottle",
+    "an insulated sleeve or pouch that holds a bottle, not the bottle itself",
+    "a replacement lid or straw accessory on its own",
+    "a phone case or clothing or sticker",
+]
+# Positive prompts for "this IS the bottle" — compared max-vs-max against the accessory
+# prompts, balanced so the count doesn't bias the result. The image guard only fires
+# when the accessory match beats the best bottle match by a real margin; the reliable
+# gate is the TITLE keywords, so this stays conservative to avoid rejecting real bottles.
+BOTTLE_PROMPTS = [
+    "a stainless steel insulated water bottle or tumbler",
+    "a Stanley tumbler cup with a lid",
+    "a metal drinking cup or flask",
+    "a reusable insulated bottle photographed on its own",
+]
+ACCESSORY_MARGIN = 0.04  # accessory must clearly out-score the bottle before we reject
+
 
 # ─────────────────────────────────────────
 # LINE PROTOTYPES (self-supervised from titled listings)
@@ -180,6 +211,29 @@ def _colour_from_image(img_emb: np.ndarray) -> str:
 
 
 # ─────────────────────────────────────────
+# ACCESSORY GUARD (the listing is not the product itself)
+# ─────────────────────────────────────────
+
+def is_accessory_title(title: str) -> bool:
+    """True if the title names an accessory (bag, sleeve, lid, straw, sticker…) rather
+    than the bottle. Substring match on ACCESSORY_TERMS, multilingual."""
+    t = (title or "").lower()
+    return any(term in t for term in ACCESSORY_TERMS)
+
+
+def _is_accessory_image(img_emb: np.ndarray) -> bool:
+    """Zero-shot check: does the photo look like an ACCESSORY (bag/sleeve/lid) rather
+    than an actual bottle? Compared max(bottle prompts) vs max(accessory prompts) with
+    a real margin, so it only fires on clear accessories — the reliable signal is the
+    title gate; this is a conservative backstop for clean-titled accessory photos."""
+    n_b = len(BOTTLE_PROMPTS)
+    sims = ic.embed_texts(BOTTLE_PROMPTS + ACCESSORY_REJECT_PROMPTS) @ img_emb
+    bottle = float(np.max(sims[:n_b]))
+    accessory = float(np.max(sims[n_b:]))
+    return accessory > bottle + ACCESSORY_MARGIN
+
+
+# ─────────────────────────────────────────
 # IDENTIFY
 # ─────────────────────────────────────────
 
@@ -195,17 +249,32 @@ def identify_product(img, brand: str = "Stanley", title_text: str = "",
     cfg = BRAND_LINES.get(brand, {"official": {}})
     r = {"brand": brand, "line": "", "line_official": "", "colour": "",
          "colour_display": "", "capacity": "", "line_source": "unknown",
-         "line_confidence": 0.0, "generated_title": "", "note": ""}
+         "line_confidence": 0.0, "is_accessory": False, "generated_title": "", "note": ""}
 
     toks = ts.fr._tokenize((title_text or "").lower())
 
-    # LINE — title first, image fallback.
-    title_line = ts.detect_model(title_text or "")
+    # ACCESSORY GUARD — a carry-all bag / sleeve / lid is not the product. Check the
+    # title first (free), then the photo. If it's an accessory, don't assert a product
+    # line at all; the caller should skip it from the product view.
     emb = None
-    if title_line:
-        r["line"], r["line_source"], r["line_confidence"] = title_line, "title", 1.0
+    if is_accessory_title(title_text):
+        r["is_accessory"] = True
+        r["note"] = "accessory (from title), not the product itself"
     else:
         emb = ic.embed_images([img])[0]
+        if np.any(emb) and _is_accessory_image(emb):
+            r["is_accessory"] = True
+            r["note"] = "accessory (from photo), not the product itself"
+
+    # LINE — title first, image fallback. Skipped for accessories.
+    title_line = "" if r["is_accessory"] else ts.detect_model(title_text or "")
+    if r["is_accessory"]:
+        pass
+    elif title_line:
+        r["line"], r["line_source"], r["line_confidence"] = title_line, "title", 1.0
+    else:
+        if emb is None:
+            emb = ic.embed_images([img])[0]
         if np.any(emb):
             protos = load_line_prototypes(brand) if protos is None else protos
             line, margin = _line_from_image(emb, protos)
@@ -239,6 +308,8 @@ def compose_title(r: dict) -> str:
     """Complete searchable title from the identified fields; omits what we don't know
     rather than inventing it. e.g. 'Stanley Quencher H2.0 FlowState Tumbler Rose Quartz
     40oz (1.18L)'."""
+    if r.get("is_accessory"):
+        return f"{r.get('brand', '')} accessory — not a bottle".strip()
     if not r.get("line_official"):
         bits = [r.get("brand", "")]
         if r.get("colour_display"):
@@ -263,6 +334,9 @@ def _print(r: dict, source: str = ""):
     print("─" * 64)
     if source:
         print(f"  {source}")
+    if r.get("is_accessory"):
+        print(f"  ⚠️  accessory — skipped   ({r['note']})")
+        return
     src = {"title": "from title", "image": "from PHOTO", "unknown": "—"}[r["line_source"]]
     print(f"  line: {r['line'] or '(unresolved)':12} ({src})   colour: {r['colour_display'] or '?'}")
     if r["note"]:
