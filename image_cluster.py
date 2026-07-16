@@ -147,6 +147,25 @@ def embed_images(images: list) -> np.ndarray:
     return out
 
 
+def embed_texts(texts: list) -> np.ndarray:
+    """Embed a list of text prompts → (N, D) L2-normalised float32 array, in the
+    SAME space as embed_images (that's what makes CLIP zero-shot work: an image and
+    the text that describes it land close together). Used by product_identify.py to
+    score a photo against candidate product descriptions."""
+    _load_clip()
+    torch = _TORCH
+    dim = _MODEL.config.projection_dim
+    out = np.zeros((len(texts), dim), dtype=np.float32)
+    for start in range(0, len(texts), BATCH_SIZE):
+        batch = texts[start : start + BATCH_SIZE]
+        with torch.no_grad():
+            inp = _PROCESSOR(text=batch, return_tensors="pt", padding=True, truncation=True)
+            feats = _MODEL.get_text_features(**inp)
+            feats = feats / feats.norm(dim=-1, keepdim=True)
+        out[start : start + len(batch)] = feats.cpu().numpy().astype(np.float32)
+    return out
+
+
 # ─────────────────────────────────────────
 # EMBEDDING CACHE (keyed by stable listing id)
 # ─────────────────────────────────────────

@@ -1,8 +1,46 @@
 # Phase 5 — Visual Variant Recognition (dev notes)
 
-> Internal notes. Status as of 2026-07-06 (second pass): **PoC + stable cross-run
-> index + Phase 4 integration BUILT and tested offline; live calibration run done
-> against real Vinted images.** No Chrome needed for catalog pulls (see below).
+> Internal notes. Status 2026-07-06: clustering PoC + stable cross-run index + Phase 4
+> integration built & calibrated. **2026-07-14: exact product IDENTIFICATION added
+> (`product_identify.py`) — photo → complete searchable title.** No Chrome needed for
+> catalog pulls (see below).
+
+## Exact product identification (`product_identify.py`, 2026-07-14)
+
+Goal (client): from a listing photo, produce a complete, Google-verifiable title —
+"Stanley Quencher H2.0 FlowState Tumbler Rose Quartz 40oz (1.18L)" — not just a variant.
+
+**What was tried and measured (don't repeat the dead end):**
+- **Zero-shot CLIP vs text prompts — FAILED.** Scoring a photo against hand-written
+  descriptions ("a tall tumbler with a handle and a straw") gave ≈2/6 on Quencher, 0/6
+  on Flip Straw. Base CLIP (ViT-B/32) can't separate the look-alike straw tumblers from
+  a text phrase. Abandoned.
+- **Image-to-image PROTOTYPES — WORKS (73%).** Embed listings whose TITLES already name
+  the line (self-supervised labels via `ts.detect_model`), average into one centroid per
+  line, classify an unknown photo by nearest centroid. Leave-one-out accuracy **73%**
+  across 4 Stanley lines (226 real photos). Confusions are the visually-similar tumblers
+  (Quencher↔Flip Straw↔IceFlow); Classic (green thermos) separates cleanly.
+
+**Design = TITLE-FIRST, image as the fallback:**
+- Line: from the title when the seller names it (ground truth); the image only fills the
+  line when the title is silent AND the top-2 prototype margin clears `IMAGE_MARGIN_MIN`
+  — otherwise we leave it unstated rather than guess. `line_source` = title|image|unknown.
+- Colour: title first, else zero-shot CLIP colour. Capacity: **title only** (a photo
+  can't show litres — verified with the client's own two examples, whose titles carry no
+  capacity).
+- Prototypes are cached (`phase5_cache/prototypes_<brand>.npz`), rebuilt with `--build`.
+
+**Measured end-to-end (title hidden, image-only, 136 held-out real listings):** the
+margin gate makes it abstain when unsure — it asserts a line on **60%** of them and is
+**91% correct** on those; the other 40% fall back to unstated rather than guess. With
+title-first on top (the ~47% of listings that name the line = 100% ground truth), most
+listings get a confident, ~correct line and the rest are honestly left blank, not wrong.
+
+**Honest ceiling (told to client):** a useful foundation, not "exact for every photo".
+Production-grade exact ID of any photo needs a stronger vision model (a multimodal LLM +
+official-source lookup) — a real API/cost dependency. This local module is the no-API
+foundation that layer would backstop. Not yet wired into the tracker/search — it's a
+standalone capability + CLI for now.
 
 ## What Phase 5 does
 
