@@ -254,11 +254,19 @@ def identify_listings(raw_catalog_items: list, slug: str,
     """
     provider = provider or get_provider()
     cache = VisionCache(slug)
-    cap_env = os.environ.get("VINTED_VISION_MAX_NEW")
-    if max_new is None and cap_env:
-        max_new = int(cap_env)
+    if max_new is None:
+        # Default per-run cap so the first backfill can't burn the whole budget in one
+        # burst. The client's account-level spend cap is the real ceiling; this is a rail.
+        max_new = int(os.environ.get("VINTED_VISION_MAX_NEW", "200"))
 
+    # Demand-first ordering (client request): spend the AI budget on the best products
+    # first. Likes (favourite_count) are the demand signal available for free on every
+    # catalog item — no history needed. Sales/offers priority would need the tracking
+    # state; likes are the immediate proxy.
+    likes = {str(it.get("id")): (it.get("favourite_count") or 0) for it in raw_catalog_items}
     listings = ic.listings_from_catalog(raw_catalog_items)
+    listings.sort(key=lambda ls: likes.get(str(ls.id), 0), reverse=True)
+
     out, new = {}, 0
     for ls in listings:
         cached = cache.get(ls.id)
@@ -272,6 +280,24 @@ def identify_listings(raw_catalog_items: list, slug: str,
     if new:
         cache.save()
     return out
+
+
+def save_identities(identities: dict, slug: str) -> str:
+    """Write the identified products (full titles) to a CSV the client can read —
+    the concrete "use full titles that identify a specific product" deliverable."""
+    import csv
+    path = f"product_identities_{ic._safe(slug)}.csv"
+    fields = ["listing_id", "generated_title", "brand", "product_line", "colour",
+              "is_accessory", "confidence"]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        for lid, v in identities.items():
+            w.writerow({"listing_id": lid, "generated_title": v.get("generated_title", ""),
+                        "brand": v.get("brand", ""), "product_line": v.get("product_line", ""),
+                        "colour": v.get("colour", ""), "is_accessory": v.get("is_accessory", False),
+                        "confidence": v.get("confidence", "")})
+    return path
 
 
 # ─────────────────────────────────────────

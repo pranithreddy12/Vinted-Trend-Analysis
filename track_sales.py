@@ -1259,6 +1259,23 @@ def main():
         except Exception as e:
             print(f"⚠️  visual variant indexing skipped: {type(e).__name__}: {e}")
 
+    # Phase 5 Stage A (opt-in): vision-AI product identification → full, specific
+    # titles. Uses the deterministic stub by default (free, no key); set
+    # VINTED_VISION_PROVIDER=anthropic once the client's API key is in the env to use
+    # the real vision model. Identifies new listings only, best-first (by likes),
+    # capped per run; results are cached so each product is paid for once.
+    if os.environ.get("VINTED_VISION") == "1":
+        try:
+            import vision_identify
+
+            idents = vision_identify.identify_listings(raw, _slug(keyword))
+            vpath = vision_identify.save_identities(idents, _slug(keyword))
+            named = sum(1 for v in idents.values() if v.get("generated_title"))
+            print(f"🔎 product identification: {named}/{len(idents)} titled → {vpath} "
+                  f"(provider: {os.environ.get('VINTED_VISION_PROVIDER', 'stub')})")
+        except Exception as e:
+            print(f"⚠️  product identification skipped: {type(e).__name__}: {e}")
+
     # Capture publish time across parallel tabs for active listings missing it.
     if os.environ.get("VINTED_TRACK_ENRICH", "1") != "0":
         enrich_publish_times(tracking, path)
