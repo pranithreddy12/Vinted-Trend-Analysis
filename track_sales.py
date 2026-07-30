@@ -257,8 +257,9 @@ def _probe_until_clear(item_id: str) -> None:
                 page = browser.contexts[0].new_page()
                 try:
                     resp = page.goto(url, timeout=30000, wait_until="domcontentloaded")
-                    blocked = (resp is not None and resp.status == 429) or \
-                        _is_rate_limited_text(page.content())
+                    # ponytail: HTTP 429 is the only trustworthy block signal; the
+                    # raw-HTML text scan false-matched bundled i18n strings on good pages.
+                    blocked = resp is not None and resp.status == 429
                 finally:
                     page.close()
         except Exception:
@@ -898,9 +899,11 @@ def _publish_ts_from_page(page, item_id: str) -> dict:
         if resp is not None and resp.status == 429:
             raise RateLimited()
 
+        # ponytail: trust the HTTP 429 above only. The old raw-HTML text scan
+        # false-matched Vinted's bundled i18n error dictionary ("rate limited" /
+        # "too many requests"), which is present on EVERY page — causing an endless
+        # false rate-limit loop even when nothing was blocked.
         html = page.content()
-        if _is_rate_limited_text(html):
-            raise RateLimited()
 
         # Structured attributes (brand, colour) from the server-rendered JSON-LD.
         try:
