@@ -25,7 +25,11 @@ Design decisions:
 """
 
 import os
+import re
 import json
+import base64
+
+import requests
 
 import track_sales as ts   # reuse Phase-4 capacity/colour/line text helpers
 import image_cluster as ic  # reuse CACHE_DIR + _safe
@@ -65,8 +69,44 @@ def _prompt(title_hint: str) -> str:
         "photo can't show litres; capacity is handled separately from the title. If the item "
         "is an accessory (a carrying bag, insulated sleeve, replacement lid, straw, or charm) "
         "rather than the bottle itself, set is_accessory=true. Be honest with confidence: use "
-        "'low' when the photo is ambiguous rather than guessing." + hint
+        "'low' when the photo is ambiguous rather than guessing." + hint +
+        '\n\nReply with ONLY a JSON object, no prose, no code fences:\n'
+        '{"brand": "", "product_line": "", "official_name": "", "colour": "", '
+        '"is_accessory": false, "confidence": "high|medium|low"}'
     )
+
+
+def _extract_json(text: str) -> dict:
+    """Parse the model's reply into a dict — tolerant of code fences or surrounding prose,
+    so it works whether the endpoint enforces JSON (Claude) or just follows the prompt
+    (Ollama and other local models)."""
+    try:
+        return json.loads(text)
+    except (ValueError, TypeError):
+        m = re.search(r"\{.*\}", text or "", re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except ValueError:
+                pass
+    return {}
+
+
+def _image_block(photo_url: str) -> dict | None:
+    """Download the photo and return a base64 image content block. base64 is the one source
+    type every anthropic-compatible endpoint accepts (Ollama only takes base64; Claude takes
+    both) — so this keeps one code path for any provider."""
+    try:
+        r = requests.get(photo_url, headers=ic._UA, timeout=ic.DOWNLOAD_TIMEOUT)
+        if r.status_code != 200 or not r.content:
+            return None
+        media = (r.headers.get("content-type") or "").split(";")[0].strip()
+        if not media.startswith("image/"):
+            media = "image/jpeg"  # Vinted CDN serves jpeg; header sometimes generic
+        return {"type": "image", "source": {"type": "base64", "media_type": media,
+                                            "data": base64.standard_b64encode(r.content).decode()}}
+    except Exception:
+        return None
 
 
 # ─────────────────────────────────────────
@@ -125,32 +165,26 @@ class AnthropicVisionProvider(VisionProvider):
         return self._client
 
     def identify(self, photo_url: str, title_hint: str = "") -> dict:
+        img = _image_block(photo_url)
+        if img is None:
+            return _empty_identity()
         client = self._client_lazy()
+        # Minimal request shape only — no output_config/thinking, so the same call works on
+        # Claude and on local anthropic-compatible endpoints (Ollama). JSON is requested in
+        # the prompt and parsed tolerantly.
         resp = client.messages.create(
             model=self.model,
-            max_tokens=2048,
-            thinking={"type": "adaptive"},
-            output_config={
-                "effort": "low",
-                "format": {"type": "json_schema", "schema": IDENTITY_SCHEMA},
-            },
+            max_tokens=1024,
             messages=[{
                 "role": "user",
-                "content": [
-                    {"type": "image", "source": {"type": "url", "url": photo_url}},
-                    {"type": "text", "text": _prompt(title_hint)},
-                ],
+                "content": [img, {"type": "text", "text": _prompt(title_hint)}],
             }],
         )
-        # With output_config.format the model returns valid JSON as a text block (after any
-        # thinking block). Parse it; on a refusal/malformed reply, fall back to empty.
-        try:
-            text = next(b.text for b in resp.content if getattr(b, "type", "") == "text")
-            data = json.loads(text)
-        except (StopIteration, ValueError, json.JSONDecodeError):
-            return _empty_identity()
-        # Trust but bound: keep only known keys, coerce types.
-        return _coerce_identity(data)
+        text = "".join(
+            getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"
+        )
+        data = _extract_json(text)
+        return _coerce_identity(data) if data else _empty_identity()
 
 
 def get_provider() -> VisionProvider:
