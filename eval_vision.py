@@ -54,11 +54,14 @@ def run(keyword: str, n: int, pages: int = 2) -> dict:
     conf = collections.Counter()
     for true_line, url in labelled:
         r = provider.identify(url, title_hint="")   # TITLE HIDDEN — pure photo test
-        pred = (r.get("product_line") or "").strip()
+        # The model names the line more fully than detect_model's bare label
+        # (e.g. "Quencher H2.0 FlowState Tumbler" vs "Quencher"), so match by
+        # containment against the model's line + official name, not exact ==.
+        pred = f"{r.get('product_line') or ''} {r.get('official_name') or ''}".strip()
         conf[r.get("confidence", "?")] += 1
         if pred:
             asserted += 1
-            correct += pred.lower() == true_line.lower()
+            correct += true_line.lower() in pred.lower()
 
     acc = round(100 * correct / asserted) if asserted else 0
     cov = round(100 * asserted / len(labelled)) if labelled else 0
