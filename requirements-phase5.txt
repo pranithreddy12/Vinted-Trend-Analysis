@@ -9,4 +9,4 @@ numpy
 # Phase 5 Stage A — vision-AI product identification (vision_identify.py). Only needed when
 # VINTED_VISION_PROVIDER=anthropic (i.e. once the client's API key is configured). The
 # default 'stub' provider needs nothing here.
-anthropic
+anthropic>=0.69   # <0.40 passes proxies= to httpx>=0.28 and crashes at client init
