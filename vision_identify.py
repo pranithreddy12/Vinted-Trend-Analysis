@@ -257,23 +257,24 @@ def compose_title(identity: dict, title_hint: str = "") -> str:
     colour_disp = ""
     try:
         import product_identify as pi
-        colour_disp = pi.COLOUR_DISPLAY.get(colour, colour.title()) if colour else ""
+        colour_disp = pi.COLOUR_DISPLAY.get(colour.lower(), colour.title()) if colour else ""
     except Exception:
         colour_disp = colour.title() if colour else ""
     # Capacity: title only.
     cap = next((c for c in (ts.canonical_capacity(t)
                             for t in ts.fr._tokenize((title_hint or "").lower())) if c), "")
-    bits = []
-    if official:
-        bits.append(official if brand.lower() in official.lower() or not brand else f"{brand} {official}")
-    elif brand:
-        bits.append(brand)
-    if colour_disp:
-        bits.append(colour_disp)
-    if cap:
+
+    title = official if (not brand or brand.lower() in official.lower()) else f"{brand} {official}"
+    title = title or brand
+    # The model often already bakes the colour (and sometimes the size) into
+    # official_name — only append a piece if it isn't already present, else it doubles
+    # ("Rose Quartz Rose Quartz").
+    if colour_disp and colour_disp.lower() not in title.lower():
+        title += f" {colour_disp}"
+    if cap and cap.lower() not in title.lower():
         metric = ts._CAP_METRIC.get(cap)
-        bits.append(f"{cap} ({metric})" if metric else cap)
-    return " ".join(bits).strip()
+        title += f" {cap} ({metric})" if metric else f" {cap}"
+    return title.strip()
 
 
 def identify_listings(raw_catalog_items: list, slug: str,
