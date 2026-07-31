@@ -302,13 +302,18 @@ def identify_listings(raw_catalog_items: list, slug: str,
     listings = ic.listings_from_catalog(raw_catalog_items)
     listings.sort(key=lambda ls: likes.get(str(ls.id), 0), reverse=True)
 
+    # Provider-tagged cache: a cached result from a DIFFERENT provider (e.g. the free
+    # stub, or a different model) is treated as a miss and re-identified. Without this, a
+    # stub run's placeholder titles would be silently reused on the first real-model run.
+    pname = type(provider).__name__
     out, new = {}, 0
     for ls in listings:
         cached = cache.get(ls.id)
-        if cached is None:
+        if cached is None or cached.get("_provider") != pname:
             if max_new is not None and new >= max_new:
                 continue  # cost cap reached this run; remaining listings resolve next run
             cached = provider.identify(ls.photo_url, title_hint=ls.title)
+            cached["_provider"] = pname
             cache.put(ls.id, cached)
             new += 1
         out[ls.id] = {**cached, "generated_title": compose_title(cached, ls.title)}

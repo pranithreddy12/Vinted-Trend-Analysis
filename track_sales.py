@@ -646,6 +646,25 @@ def _load_visual_variants(slug: str) -> tuple[dict, dict]:
         return {}, {}
 
 
+def _load_vision_identities(slug: str) -> dict:
+    """Phase 5 Stage A hook: {listing_id: official_title} from the vision-ID cache, if
+    one exists. Cheap JSON read, no key/torch — empty when vision is unused, so Phase 4
+    output is unchanged. Skips accessories and blank titles."""
+    if not slug:
+        return {}
+    try:
+        import vision_identify
+
+        cache = vision_identify.VisionCache(slug)
+        return {
+            lid: v.get("generated_title") or vision_identify.compose_title(v)
+            for lid, v in cache.data.items()
+            if not v.get("is_accessory") and (v.get("official_name") or v.get("generated_title"))
+        }
+    except Exception:
+        return {}
+
+
 def variant_analysis(
     tracking: dict,
     now: datetime | None = None,
@@ -669,6 +688,7 @@ def variant_analysis(
     updated = now.strftime("%Y-%m-%d %H:%M UTC")
     prev_snap = load_prev_variant_snapshot(now.strftime("%Y-%m-%d"), slug)
     vis_map, vis_labels = _load_visual_variants(visual_slug)
+    vision_titles = _load_vision_identities(slug)  # {listing_id: official title}
     brand = slug.split("_")[0].title() if slug else ""
 
     firsts = []
@@ -717,8 +737,11 @@ def variant_analysis(
             v,
             {"active": 0, "gone": 0, "lifes": [], "prices": [],
              "offers_total": 0, "offers_listings": 0,
-             "model": model, "base": base},
+             "model": model, "base": base, "vision_titles": collections.Counter()},
         )
+        vt = vision_titles.get(str(r.get("id", "")))
+        if vt:
+            g["vision_titles"][vt] += 1
         if r["status"] == "active":
             g["active"] += 1
             # Buyer-offer signal: only active listings, only where we actually
@@ -771,10 +794,15 @@ def variant_analysis(
             offers_measured=g["offers_listings"] > 0,
         )
         product = product_display_name(g.get("model", ""), g.get("base", ""), brand)
+        # Phase 5 Stage A: the AI-identified official product name (dominant across the
+        # variant's listings), when vision has run — else "".
+        vt = g.get("vision_titles")
+        ai_product = vt.most_common(1)[0][0] if vt else ""
         out.append(
             {
                 "variant": v,
                 "product": product or v,
+                "ai_product": ai_product,
                 "est_sales_30d": est_30d,
                 "demand_level": demand_label(est_30d),
                 "median_days_to_sell": med_days,
@@ -859,6 +887,7 @@ def save_variant_report(variants: list, output_file: str = "variant_report.csv")
         return None
     fields = [
         "product",
+        "ai_product",
         "variant",
         "est_sales_30d",
         "demand_level",
