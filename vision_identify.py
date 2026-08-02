@@ -75,8 +75,11 @@ def _prompt(title_hint: str) -> str:
         "ALWAYS fill 'category' (the generic product type, e.g. 'dog stairs', 'polo shirt') "
         "and 'attributes' (key visible features as a short phrase, e.g. 'foam, 4 steps'), and "
         "'colour' when visible — branded or not. "
-        "Do NOT state a capacity/size — a photo can't show litres; capacity is handled "
-        "separately from the title. If the item is an accessory (a carrying bag, sleeve, "
+        "Do NOT put the capacity/size OR the colour in official_name — a photo can't show "
+        "litres, and the colour is taken from the listing itself; both are added to the title "
+        "separately. Give official_name as the product line/name only (e.g. 'Stanley Quencher "
+        "H2.0 FlowState Tumbler'), and report the colour you see in the 'colour' field. "
+        "If the item is an accessory (a carrying bag, sleeve, "
         "replacement lid, straw, or charm) rather than the main item itself, set "
         "is_accessory=true. Be honest with confidence: use 'low' when the photo is ambiguous "
         "rather than guessing." + hint +
@@ -260,14 +263,28 @@ class VisionCache:
 # COMPOSE TITLE + BATCH HOOK
 # ─────────────────────────────────────────
 
-def compose_title(identity: dict, title_hint: str = "") -> str:
-    """Build the final searchable title from the identity + capacity read from the listing
-    title (never the photo). Mirrors product_identify.compose_title's shape."""
+def _resolve_colour(identity: dict, title_hint: str, listing_colour: str) -> str:
+    """Pick the colour, most-authoritative first: the listing's own declared colour
+    (Vinted's structured 'Couleur' attribute, or a colour word in the title) beats the
+    vision model's guess — the photo is the least reliable colour source (it mislabels
+    look-alike colourways, e.g. hot-coral → 'Tigerlily'). Returns a canonical bucket."""
+    c = ts.normalize_color(listing_colour) if listing_colour else ""  # structured attr (localised)
+    if not c:
+        toks = ts.fr._tokenize((title_hint or "").lower())
+        c = next((ts.COLOR_BUCKETS[t] for t in toks if t in ts.COLOR_BUCKETS), "")  # title word
+    return c or identity.get("colour", "")  # vision guess only as last resort
+
+
+def compose_title(identity: dict, title_hint: str = "", listing_colour: str = "") -> str:
+    """Build the final searchable title from the identity + capacity/colour read from the
+    LISTING (never the photo). `listing_colour` = Vinted's structured colour attribute when
+    the caller has it; it wins over any colour the vision model guessed. Mirrors
+    product_identify.compose_title's shape."""
     if identity.get("is_accessory"):
         return f"{identity.get('brand', '') or 'Unknown'} accessory — not a bottle".strip()
     brand = identity.get("brand", "")
     official = identity.get("official_name", "")
-    colour = identity.get("colour", "")
+    colour = _resolve_colour(identity, title_hint, listing_colour)
     colour_disp = ""
     try:
         import product_identify as pi
@@ -300,13 +317,20 @@ def compose_title(identity: dict, title_hint: str = "") -> str:
 
 def identify_listings(raw_catalog_items: list, slug: str,
                       provider: VisionProvider | None = None,
-                      max_new: int | None = None) -> dict:
+                      max_new: int | None = None,
+                      colours: dict | None = None) -> dict:
     """Integration hook (not yet wired live). Identify listings we haven't seen, cache the
     results, and return {listing_id: {**identity, 'generated_title': ...}}.
 
     Incremental + cost-bounded: already-cached listings cost nothing; `max_new` caps how many
     fresh identifications happen per call (env VINTED_VISION_MAX_NEW also honoured). Only
     listings with a usable photo are considered.
+
+    `colours` = optional {listing_id: colour} from the listing's own data (Vinted's structured
+    colour attribute), which the tracker has after enrichment. When given, it overrides the
+    vision model's colour guess in the composed title (the listing knows its colour; the photo
+    only guesses). The catalog feed has no colour, so a catalog-only caller passes nothing and
+    colour falls back to the title text, then the vision guess.
     """
     provider = provider or get_provider()
     cache = VisionCache(slug)
@@ -337,7 +361,8 @@ def identify_listings(raw_catalog_items: list, slug: str,
             cached["_provider"] = pname
             cache.put(ls.id, cached)
             new += 1
-        out[ls.id] = {**cached, "generated_title": compose_title(cached, ls.title)}
+        lc = (colours or {}).get(str(ls.id), "")  # listing's declared colour, if the caller has it
+        out[ls.id] = {**cached, "generated_title": compose_title(cached, ls.title, lc)}
     if new:
         cache.save()
     return out
@@ -372,6 +397,11 @@ def _demo() -> None:
     g = compose_title({"brand": "", "official_name": "", "colour": "grey",
                        "category": "dog stairs", "attributes": "foam, 4 steps"}, "")
     assert g and "dog stairs" in g and "foam" in g and g[0] != " ", g
+    # Colour priority: listing's declared colour → title colour word → vision guess.
+    vg = {"colour": "orange"}  # the vision model's (untrusted) guess
+    assert _resolve_colour(vg, "", "Bleu") == "blue", "listing colour must win"
+    assert _resolve_colour(vg, "Quencher rose 1.18L", "") == "pink", "title colour beats vision"
+    assert _resolve_colour(vg, "", "") == "orange", "vision guess only as last resort"
     # No brand AND nothing to describe → empty (honest), not a fake name.
     assert compose_title(_empty_identity(), "") == "", "empty identity must stay empty"
     # attributes as a list coerces to a phrase.

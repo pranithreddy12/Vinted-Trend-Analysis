@@ -1300,7 +1300,11 @@ def main():
         try:
             import vision_identify
 
-            idents = vision_identify.identify_listings(raw, _slug(keyword))
+            # Prefer each listing's own declared colour (structured attribute captured during
+            # enrichment) over the vision model's photo-guess in the composed title.
+            colours = {str(iid): row.get("color", "")
+                       for iid, row in tracking.items() if row.get("color")}
+            idents = vision_identify.identify_listings(raw, _slug(keyword), colours=colours)
             vpath = vision_identify.save_identities(idents, _slug(keyword))
             named = sum(1 for v in idents.values() if v.get("generated_title"))
             print(f"🔎 product identification: {named}/{len(idents)} titled → {vpath} "
