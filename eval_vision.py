@@ -130,7 +130,9 @@ def show(keyword: str, n: int, pages: int = 2, html: str = "") -> None:
             continue
         r = provider.identify(url, title_hint="")
         true_line = ts.detect_model(it.get("title", ""))
-        name = r.get("official_name") or "(none)"
+        # branded → official name; generic (Stage B) → descriptor built from photo only
+        # (title_hint="" so nothing leaks from the hidden listing title).
+        name = r.get("official_name") or vi.compose_title(r, "") or "(none)"
         mark = ""
         if true_line:
             hit = true_line.lower() in f"{r.get('product_line') or ''} {name}".lower()

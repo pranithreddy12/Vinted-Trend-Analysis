@@ -46,11 +46,15 @@ IDENTITY_SCHEMA = {
         "brand": {"type": "string", "description": "Brand name, e.g. 'Stanley'. '' if unknown."},
         "product_line": {"type": "string", "description": "Product line/model family, e.g. 'Quencher', 'Flip Straw', 'IceFlow'. '' if not identifiable."},
         "official_name": {"type": "string", "description": "Full official product name suitable for a Google search, e.g. 'Stanley Quencher H2.0 FlowState Tumbler'. '' if unknown."},
+        # Stage B — generic (no-brand) items: category + attributes always describe the item
+        # even when brand/official_name are empty, so it stays groupable and analysable.
+        "category": {"type": "string", "description": "Generic product type, e.g. 'dog stairs', 'polo shirt', 'table lamp'. Fill even with no brand."},
+        "attributes": {"type": "string", "description": "Key visible features as a short phrase, e.g. 'foam, 4 steps' or 'piqué, short sleeve'. '' if none stand out."},
         "colour": {"type": "string", "description": "Canonical colour word in English, e.g. 'pink', 'black'. '' if unclear."},
-        "is_accessory": {"type": "boolean", "description": "True if the item is an accessory (bag, sleeve, lid, straw, charm), not the bottle itself."},
+        "is_accessory": {"type": "boolean", "description": "True if the item is an accessory (bag, sleeve, lid, straw, charm), not the main item itself."},
         "confidence": {"type": "string", "enum": ["high", "medium", "low"], "description": "How sure the identification is."},
     },
-    "required": ["brand", "product_line", "official_name", "colour", "is_accessory", "confidence"],
+    "required": ["brand", "product_line", "official_name", "category", "attributes", "colour", "is_accessory", "confidence"],
     "additionalProperties": False,
 }
 
@@ -62,17 +66,23 @@ def _prompt(title_hint: str) -> str:
     accessory guard so the model's job matches the rest of the pipeline."""
     hint = f'\n\nThe seller titled this listing: "{title_hint}". Use it as a hint, but trust the photo for brand, line and colour.' if title_hint else ""
     return (
-        "You identify the exact resale product shown in this Vinted listing photo. "
-        "Return the brand, the specific product line/model, the colour, and a complete "
-        "OFFICIAL product name that would return the exact product if pasted into Google. "
-        "Identify brand, line and colour from the image. Do NOT state a capacity/size — a "
-        "photo can't show litres; capacity is handled separately from the title. If the item "
-        "is an accessory (a carrying bag, insulated sleeve, replacement lid, straw, or charm) "
-        "rather than the bottle itself, set is_accessory=true. Be honest with confidence: use "
-        "'low' when the photo is ambiguous rather than guessing." + hint +
+        "You identify the resale product shown in this Vinted listing photo. "
+        "If it is a recognisable BRANDED product, return the brand, the specific product "
+        "line/model, the colour, and a complete OFFICIAL product name that would return the "
+        "exact product if pasted into Google. "
+        "If it has NO identifiable brand (a generic item), do NOT invent a brand or model — "
+        "leave brand, product_line and official_name empty; describe it instead. "
+        "ALWAYS fill 'category' (the generic product type, e.g. 'dog stairs', 'polo shirt') "
+        "and 'attributes' (key visible features as a short phrase, e.g. 'foam, 4 steps'), and "
+        "'colour' when visible — branded or not. "
+        "Do NOT state a capacity/size — a photo can't show litres; capacity is handled "
+        "separately from the title. If the item is an accessory (a carrying bag, sleeve, "
+        "replacement lid, straw, or charm) rather than the main item itself, set "
+        "is_accessory=true. Be honest with confidence: use 'low' when the photo is ambiguous "
+        "rather than guessing." + hint +
         '\n\nReply with ONLY a JSON object, no prose, no code fences:\n'
-        '{"brand": "", "product_line": "", "official_name": "", "colour": "", '
-        '"is_accessory": false, "confidence": "high|medium|low"}'
+        '{"brand": "", "product_line": "", "official_name": "", "category": "", '
+        '"attributes": "", "colour": "", "is_accessory": false, "confidence": "high|medium|low"}'
     )
 
 
@@ -142,6 +152,7 @@ class StubVisionProvider(VisionProvider):
             "brand": "Stanley" if "stanley" in (title_hint or "").lower() else "",
             "product_line": line,
             "official_name": official,
+            "category": "", "attributes": "",  # stub has no vision; generics need the real model
             "colour": colour,
             "is_accessory": bool(accessory),
             "confidence": "low",  # a stub is never confident — it's a placeholder
@@ -197,8 +208,8 @@ def get_provider() -> VisionProvider:
 
 
 def _empty_identity() -> dict:
-    return {"brand": "", "product_line": "", "official_name": "", "colour": "",
-            "is_accessory": False, "confidence": "low"}
+    return {"brand": "", "product_line": "", "official_name": "", "category": "",
+            "attributes": "", "colour": "", "is_accessory": False, "confidence": "low"}
 
 
 def _coerce_identity(d: dict) -> dict:
@@ -206,6 +217,9 @@ def _coerce_identity(d: dict) -> dict:
     for k in out:
         if k in d:
             out[k] = d[k]
+    # attributes sometimes comes back as a list ("foam", "4 steps") — flatten to a phrase.
+    if isinstance(out["attributes"], list):
+        out["attributes"] = ", ".join(str(a) for a in out["attributes"] if a)
     out["is_accessory"] = bool(out["is_accessory"])
     if out["confidence"] not in ("high", "medium", "low"):
         out["confidence"] = "low"
@@ -266,6 +280,13 @@ def compose_title(identity: dict, title_hint: str = "") -> str:
 
     title = official if (not brand or brand.lower() in official.lower()) else f"{brand} {official}"
     title = title or brand
+    # Stage B — no brand identified: build a generic descriptor from what the photo shows
+    # (colour + attributes + category), e.g. "Grey foam dog stairs". Heuristic string join;
+    # ponytail: naive assembly, fine for grouping/analysis, not a catalogue SKU.
+    if not title:
+        generic = " ".join(p for p in (colour_disp, identity.get("attributes", ""),
+                                       identity.get("category", "")) if p).strip()
+        return generic  # colour already folded in; skip the branded colour/capacity appends
     # The model often already bakes the colour (and sometimes the size) into
     # official_name — only append a piece if it isn't already present, else it doubles
     # ("Rose Quartz Rose Quartz").
@@ -327,17 +348,39 @@ def save_identities(identities: dict, slug: str) -> str:
     the concrete "use full titles that identify a specific product" deliverable."""
     import csv
     path = f"product_identities_{ic._safe(slug)}.csv"
-    fields = ["listing_id", "generated_title", "brand", "product_line", "colour",
-              "is_accessory", "confidence"]
+    fields = ["listing_id", "generated_title", "brand", "product_line", "category",
+              "colour", "is_accessory", "confidence"]
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         for lid, v in identities.items():
             w.writerow({"listing_id": lid, "generated_title": v.get("generated_title", ""),
                         "brand": v.get("brand", ""), "product_line": v.get("product_line", ""),
+                        "category": v.get("category", ""),
                         "colour": v.get("colour", ""), "is_accessory": v.get("is_accessory", False),
                         "confidence": v.get("confidence", "")})
     return path
+
+
+def _demo() -> None:
+    """Self-check: branded titles unchanged; a no-brand generic gets a descriptor (not '')."""
+    # Branded (Stage A) — unchanged behaviour.
+    t = compose_title({"brand": "Stanley", "official_name": "Stanley Quencher H2.0 FlowState Tumbler",
+                        "colour": "rose", "category": "", "attributes": ""}, "40oz 1.18L")
+    assert t.startswith("Stanley Quencher"), t
+    # Generic (Stage B) — no brand → descriptor from category + attributes + colour.
+    g = compose_title({"brand": "", "official_name": "", "colour": "grey",
+                       "category": "dog stairs", "attributes": "foam, 4 steps"}, "")
+    assert g and "dog stairs" in g and "foam" in g and g[0] != " ", g
+    # No brand AND nothing to describe → empty (honest), not a fake name.
+    assert compose_title(_empty_identity(), "") == "", "empty identity must stay empty"
+    # attributes as a list coerces to a phrase.
+    assert _coerce_identity({"attributes": ["foam", "4 steps"]})["attributes"] == "foam, 4 steps"
+    print("vision_identify self-check OK:", repr(g))
+
+
+if __name__ == "__main__":
+    _demo()
 
 
 # ─────────────────────────────────────────
