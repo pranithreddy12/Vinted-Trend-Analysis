@@ -275,10 +275,35 @@ def _resolve_colour(identity: dict, title_hint: str, listing_colour: str) -> str
     return c or identity.get("colour", "")  # vision guess only as last resort
 
 
-def compose_title(identity: dict, title_hint: str = "", listing_colour: str = "") -> str:
-    """Build the final searchable title from the identity + capacity/colour read from the
-    LISTING (never the photo). `listing_colour` = Vinted's structured colour attribute when
-    the caller has it; it wins over any colour the vision model guessed. Mirrors
+# Vinted forces a size on every clothing listing, but non-clothing (and one-size items) come
+# back as a meaningless placeholder — don't glue those onto the title.
+_NOOP_SIZES = {"", "one size", "onesize", "one-size", "one size fits all", "unique",
+               "taille unique", "taglia unica", "talla única", "única", "einheitsgröße",
+               "os", "u", "n/a"}
+
+
+def _real_size(size: str) -> str:
+    s = (size or "").strip()
+    return "" if s.lower() in _NOOP_SIZES else s
+
+
+def _with_size(title: str, size: str) -> str:
+    size = _real_size(size)
+    if not size:
+        return title
+    # Whole-token match, not substring — a one-letter size ("S") is a substring of half the
+    # words in a title ("Shirt", "roSe"), which would wrongly suppress it.
+    if size.lower() in set(re.findall(r"[\w.]+", title.lower())):
+        return title
+    return f"{title} — {size}"
+
+
+def compose_title(identity: dict, title_hint: str = "", listing_colour: str = "",
+                  listing_size: str = "") -> str:
+    """Build the final searchable title from the identity + capacity/colour/size read from the
+    LISTING (never the photo). `listing_colour` = Vinted's structured colour attribute; it wins
+    over any colour the vision model guessed. `listing_size` = the catalog `size_title` (Vinted
+    forces it on clothing) — appended for clothing/generics, skipped when it's a no-op. Mirrors
     product_identify.compose_title's shape."""
     if identity.get("is_accessory"):
         return f"{identity.get('brand', '') or 'Unknown'} accessory — not a bottle".strip()
@@ -303,7 +328,9 @@ def compose_title(identity: dict, title_hint: str = "", listing_colour: str = ""
     if not title:
         generic = " ".join(p for p in (colour_disp, identity.get("attributes", ""),
                                        identity.get("category", "")) if p).strip()
-        return generic  # colour already folded in; skip the branded colour/capacity appends
+        # colour already folded in; skip the branded colour/capacity appends, but a real
+        # clothing size still helps identify it ("Grey polo shirt — S").
+        return _with_size(generic, listing_size)
     # The model often already bakes the colour (and sometimes the size) into
     # official_name — only append a piece if it isn't already present, else it doubles
     # ("Rose Quartz Rose Quartz").
@@ -312,7 +339,7 @@ def compose_title(identity: dict, title_hint: str = "", listing_colour: str = ""
     if cap and cap.lower() not in title.lower():
         metric = ts._CAP_METRIC.get(cap)
         title += f" {cap} ({metric})" if metric else f" {cap}"
-    return title.strip()
+    return _with_size(title.strip(), listing_size)
 
 
 def identify_listings(raw_catalog_items: list, slug: str,
@@ -344,6 +371,9 @@ def identify_listings(raw_catalog_items: list, slug: str,
     # catalog item — no history needed. Sales/offers priority would need the tracking
     # state; likes are the immediate proxy.
     likes = {str(it.get("id")): (it.get("favourite_count") or 0) for it in raw_catalog_items}
+    # Vinted's mandatory clothing size is right in the catalog feed (`size_title`) — no item
+    # page needed. Empty for non-clothing (bottles), so it only fills in where it's real.
+    sizes = {str(it.get("id")): (it.get("size_title") or "") for it in raw_catalog_items}
     listings = ic.listings_from_catalog(raw_catalog_items)
     listings.sort(key=lambda ls: likes.get(str(ls.id), 0), reverse=True)
 
@@ -362,7 +392,8 @@ def identify_listings(raw_catalog_items: list, slug: str,
             cache.put(ls.id, cached)
             new += 1
         lc = (colours or {}).get(str(ls.id), "")  # listing's declared colour, if the caller has it
-        out[ls.id] = {**cached, "generated_title": compose_title(cached, ls.title, lc)}
+        sz = sizes.get(str(ls.id), "")            # listing's declared clothing size (catalog)
+        out[ls.id] = {**cached, "generated_title": compose_title(cached, ls.title, lc, sz)}
     if new:
         cache.save()
     return out
@@ -402,6 +433,14 @@ def _demo() -> None:
     assert _resolve_colour(vg, "", "Bleu") == "blue", "listing colour must win"
     assert _resolve_colour(vg, "Quencher rose 1.18L", "") == "pink", "title colour beats vision"
     assert _resolve_colour(vg, "", "") == "orange", "vision guess only as last resort"
+    # Clothing size (from the catalog) is appended; a no-op size is skipped; bottles get none.
+    rl = {"brand": "", "official_name": "", "colour": "pink", "category": "polo shirt",
+          "attributes": ""}
+    assert compose_title(rl, "", "", "S").endswith("— S"), compose_title(rl, "", "", "S")
+    assert "—" not in compose_title(rl, "", "", "Taille unique"), "no-op size must be skipped"
+    assert compose_title({"brand": "Stanley", "official_name": "Stanley Quencher H2.0 FlowState "
+                          "Tumbler", "colour": "", "category": "", "attributes": ""},
+                         "40oz 1.18L", "", "").count("—") == 0, "bottle: no size dash"
     # No brand AND nothing to describe → empty (honest), not a fake name.
     assert compose_title(_empty_identity(), "") == "", "empty identity must stay empty"
     # attributes as a list coerces to a phrase.
