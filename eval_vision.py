@@ -76,15 +76,56 @@ def run(keyword: str, n: int, pages: int = 2) -> dict:
             "accuracy_pct": acc, "coverage_pct": cov}
 
 
+def show(keyword: str, n: int, pages: int = 2) -> None:
+    """Qualitative dump: print what the model says for each photo (title hidden).
+
+    Works for ANY keyword — branded or generic no-brand ("grey dog stairs"). When
+    the title happens to name a known line (detect_model), we annotate HIT/MISS;
+    otherwise there's no ground truth, so we just show the model's raw call.
+    """
+    c, t = ic._anon_session()
+    raw = fr.fetch_catalog_via_requests(
+        fr.normalize_search_query(keyword), c, t, max_pages=pages
+    )
+    provider = vi.get_provider()
+    print(f"show: {keyword!r} · provider="
+          f"{vi.os.environ.get('VINTED_VISION_PROVIDER', 'stub')} · title HIDDEN\n")
+    seen = set()
+    shown = 0
+    for it in raw:
+        iid = it.get("id")
+        if iid in seen:
+            continue
+        seen.add(iid)
+        url = ic._photo_url(it)
+        if not url:
+            continue
+        r = provider.identify(url, title_hint="")
+        true_line = ts.detect_model(it.get("title", ""))
+        name = r.get("official_name") or "(none)"
+        mark = ""
+        if true_line:
+            hit = true_line.lower() in f"{r.get('product_line') or ''} {name}".lower()
+            mark = "  [HIT] " if hit else "  [MISS]"
+        acc = " ·ACCESSORY" if r.get("is_accessory") else ""
+        print(f"{mark:8} {r.get('confidence','?'):6} | {name}{acc}")
+        print(f"         listing title (hidden from model): {it.get('title','')!r}")
+        shown += 1
+        if shown >= n:
+            break
+
+
 def main():
     ap = argparse.ArgumentParser(description="Stage A vision accuracy eval")
     ap.add_argument("keyword", nargs="?", default="stanley quencher")
     ap.add_argument("--n", type=int, default=25, help="photos to test (bounds spend)")
     ap.add_argument("--pages", type=int, default=2)
+    ap.add_argument("--show", action="store_true",
+                    help="print each identification (hits + misses) instead of the score")
     args = ap.parse_args()
     if args.keyword:
         sys.stdout.reconfigure(encoding="utf-8")
-    run(args.keyword, args.n, args.pages)
+    (show if args.show else run)(args.keyword, args.n, args.pages)
 
 
 if __name__ == "__main__":
