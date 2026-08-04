@@ -1183,12 +1183,22 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
 
 
 def main():
-    keyword = (
-        (sys.argv[1] if len(sys.argv) > 1 else None)
-        or os.environ.get("VINTED_KEYWORDS")
-        or "stanley quencher"
-    )
-    keyword = keyword.split(",")[0].strip()
+    # Phase 6 Layer 1 — seedless category sweep. Set VINTED_CATALOG_ID=<vinted category id>
+    # to track a WHOLE category with no search keyword (the foundation the autonomous-discovery
+    # detector will later mine). VINTED_CATEGORY_NAME labels the output files. Everything
+    # downstream (turnover, variants, history snapshots) is unchanged — only the fetch differs.
+    cat_id_env = os.environ.get("VINTED_CATALOG_ID")
+    seedless = bool(cat_id_env)
+    catalog_id = int(cat_id_env) if seedless else None
+    if seedless:
+        keyword = os.environ.get("VINTED_CATEGORY_NAME") or f"category {cat_id_env}"
+    else:
+        keyword = (
+            (sys.argv[1] if len(sys.argv) > 1 else None)
+            or os.environ.get("VINTED_KEYWORDS")
+            or "stanley quencher"
+        )
+        keyword = keyword.split(",")[0].strip()
     path = os.path.join(TRACK_DIR, f"{_slug(keyword)}.csv")
 
     with sync_playwright() as p:
@@ -1232,16 +1242,19 @@ def main():
         # Refine the query + filter to product identity (client feedback 2026-07-11)
         # so the tracker follows the actual product, not every generic 'gourde'.
         # Toggle off with VINTED_IDENTITY_FILTER=0.
-        identity_on = os.environ.get("VINTED_IDENTITY_FILTER", "1") != "0"
-        search_q = fr.normalize_search_query(keyword) if identity_on else keyword
+        # Seedless sweeps browse a whole category (empty search_text + catalog_id), so the
+        # identity refine/filter — which follows a specific product — is off for them.
+        identity_on = (not seedless) and os.environ.get("VINTED_IDENTITY_FILTER", "1") != "0"
+        search_q = fr.normalize_search_query(keyword) if identity_on else ("" if seedless else keyword)
         print(f"\n🔍 Fetching complete active catalog for: {keyword}"
+              + ("  (seedless category sweep)" if seedless else "")
               + (f'  → "{search_q}"' if identity_on and search_q != keyword else "")
               + (f"  (domains: {', '.join(domains)})" if len(domains) > 1 else ""))
         # Fetch ALL pages and disable the age-based early stop so the active set is
         # complete — otherwise items would look 'disappeared' just for being old.
         raw = fr.fetch_catalog_multi_domain(
             search_q, cookies, token, domains=domains,
-            max_pages=None, stop_when_old_ratio=2.0,
+            max_pages=None, stop_when_old_ratio=2.0, catalog_id=catalog_id,
         )
         if identity_on:
             # Tiered relevance: track the brand's whole range (exact product +
