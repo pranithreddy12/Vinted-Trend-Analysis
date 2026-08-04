@@ -1346,6 +1346,19 @@ def main():
         print(f"💾 Variant report saved: {vpath} ({len(variants)} variants)")
     save_variant_snapshot(variants, _slug(keyword))  # enables next run's trend column
 
+    # Phase 6 Layer 2 (opt-in): rank the sweep's products by discovery score (demand +
+    # velocity + low competition + RISING momentum from the snapshot history) and surface the
+    # hidden opportunities. Momentum strengthens as daily history accumulates.
+    if os.environ.get("VINTED_DISCOVER") == "1":
+        try:
+            import discover_opportunities as disc
+            ranked = disc.rank_opportunities(variants, _slug(keyword))
+            disc.print_top(ranked)
+            opath = disc.save_opportunities_report(ranked, _slug(keyword))
+            print(f"💾 Opportunities report saved: {opath} ({len(ranked)} ranked)")
+        except Exception as e:
+            print(f"⚠️  opportunity discovery skipped: {type(e).__name__}: {e}")
+
 
 if __name__ == "__main__":
     main()
