@@ -415,16 +415,22 @@ def save_identities(identities: dict, slug: str) -> str:
     import csv
     path = f"product_identities_{ic._safe(slug)}.csv"
     fields = ["listing_id", "generated_title", "brand", "product_line", "category",
-              "colour", "is_accessory", "confidence"]
+              "colour", "is_accessory", "confidence",
+              # Stage B — generic reference lookup (blank unless VINTED_REFERENCE enriched them).
+              "reference_product", "ref_price_low", "ref_price_high"]
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         for lid, v in identities.items():
+            ref = v.get("reference") or {}
             w.writerow({"listing_id": lid, "generated_title": v.get("generated_title", ""),
                         "brand": v.get("brand", ""), "product_line": v.get("product_line", ""),
                         "category": v.get("category", ""),
                         "colour": v.get("colour", ""), "is_accessory": v.get("is_accessory", False),
-                        "confidence": v.get("confidence", "")})
+                        "confidence": v.get("confidence", ""),
+                        "reference_product": ref.get("reference_name", ""),
+                        "ref_price_low": ref.get("price_low", ""),
+                        "ref_price_high": ref.get("price_high", "")})
     return path
 
 

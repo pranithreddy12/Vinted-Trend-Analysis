@@ -1305,6 +1305,11 @@ def main():
             colours = {str(iid): row.get("color", "")
                        for iid, row in tracking.items() if row.get("color")}
             idents = vision_identify.identify_listings(raw, _slug(keyword), colours=colours)
+            # Stage B (opt-in): look up a reference product + price band for GENERIC no-brand
+            # items. Off unless VINTED_REFERENCE=1; branded items are untouched.
+            if os.environ.get("VINTED_REFERENCE") == "1":
+                import reference_lookup
+                idents = reference_lookup.enrich_generics(idents, _slug(keyword))
             vpath = vision_identify.save_identities(idents, _slug(keyword))
             named = sum(1 for v in idents.values() if v.get("generated_title"))
             print(f"🔎 product identification: {named}/{len(idents)} titled → {vpath} "
