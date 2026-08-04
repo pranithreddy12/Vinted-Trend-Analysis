@@ -287,6 +287,21 @@ def _real_size(size: str) -> str:
     return "" if s.lower() in _NOOP_SIZES else s
 
 
+def _display_colour(colour: str, brand: str) -> str:
+    """Canonical colour → the name shown in the title. Stanley's marketing colourway names
+    (Rose Quartz, Pool, Tigerlily…) only make sense for Stanley; for any other brand or a
+    generic item, use the plain canonical colour ('Pink'), not a Stanley colourway."""
+    if not colour:
+        return ""
+    if brand.lower() == "stanley":
+        try:
+            import product_identify as pi
+            return pi.COLOUR_DISPLAY.get(colour.lower(), colour.title())
+        except Exception:
+            pass
+    return colour.title()
+
+
 def _with_size(title: str, size: str) -> str:
     size = _real_size(size)
     if not size:
@@ -310,12 +325,7 @@ def compose_title(identity: dict, title_hint: str = "", listing_colour: str = ""
     brand = identity.get("brand", "")
     official = identity.get("official_name", "")
     colour = _resolve_colour(identity, title_hint, listing_colour)
-    colour_disp = ""
-    try:
-        import product_identify as pi
-        colour_disp = pi.COLOUR_DISPLAY.get(colour.lower(), colour.title()) if colour else ""
-    except Exception:
-        colour_disp = colour.title() if colour else ""
+    colour_disp = _display_colour(colour, brand)
     # Capacity: title only.
     cap = next((c for c in (ts.canonical_capacity(t)
                             for t in ts.fr._tokenize((title_hint or "").lower())) if c), "")
@@ -433,6 +443,10 @@ def _demo() -> None:
     assert _resolve_colour(vg, "", "Bleu") == "blue", "listing colour must win"
     assert _resolve_colour(vg, "Quencher rose 1.18L", "") == "pink", "title colour beats vision"
     assert _resolve_colour(vg, "", "") == "orange", "vision guess only as last resort"
+    # Colour display is brand-aware: Stanley keeps its marketing colourway, generics stay plain.
+    assert _display_colour("pink", "Stanley") == "Rose Quartz", "Stanley keeps its colourway"
+    assert _display_colour("pink", "") == "Pink", "generic must be plain canonical colour"
+    assert _display_colour("pink", "Ralph Lauren") == "Pink", "other brands: plain colour"
     # Clothing size (from the catalog) is appended; a no-op size is skipped; bottles get none.
     rl = {"brand": "", "official_name": "", "colour": "pink", "category": "polo shirt",
           "attributes": ""}
