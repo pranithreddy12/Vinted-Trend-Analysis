@@ -20,6 +20,15 @@ export VINTED_TRACK_WORKERS=2    # gentle — avoids Vinted's rate limiting
 # you only want to track a subset.
 export VINTED_DOMAINS="fr,be,lu,nl,de,at,es,pt,it,ie"
 
+# ---- Optional AI features (OFF by default — each spends your own Anthropic budget) ----
+# Uncomment to enable during continuous collection. Cost scales with NEW distinct products,
+# not total listings, and VINTED_DEDUP cuts it further by identifying each product once.
+# export VINTED_VISION=1                    # AI product identification (Stage A)
+# export VINTED_VISION_PROVIDER=anthropic   # (needs ANTHROPIC_API_KEY in the environment)
+# export VINTED_DEDUP=1                     # reuse each product across sellers — big AI-cost cut
+# export VINTED_REFERENCE=1                 # reference lookup for generic items (Stage B)
+# export VINTED_DISCOVER=1                  # opportunity ranking + smart alerts (Phase 6, no AI cost)
+
 # Confirm the logged-in debug-Chrome is up; if not, stop (don't corrupt anything).
 if ! curl -s -m 3 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
   echo "[$(date)] ERROR: Chrome is not running with the debugging port."
@@ -38,8 +47,19 @@ while IFS= read -r kw || [ -n "$kw" ]; do
   kw="$(echo "$kw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
   [ -z "$kw" ] && continue
   case "$kw" in \#*) continue ;; esac
-  echo "[$(date)] tracking: $kw"
-  python3 track_sales.py "$kw"
+  if [ "${kw#cat:}" != "$kw" ]; then
+    # Seedless category sweep (Phase 6 Layer 1): "cat:<id> <label>" collects a WHOLE category
+    # with no search keyword, feeding the same tracking/history pipeline.
+    rest="${kw#cat:}"
+    cat_id="${rest%%[[:space:]]*}"
+    cat_name="$(printf '%s' "$rest" | sed 's/^[^[:space:]]*[[:space:]]*//')"
+    [ -z "$cat_name" ] && cat_name="category $cat_id"
+    echo "[$(date)] sweeping category: $cat_id ($cat_name)"
+    VINTED_CATALOG_ID="$cat_id" VINTED_CATEGORY_NAME="$cat_name" python3 track_sales.py
+  else
+    echo "[$(date)] tracking: $kw"
+    python3 track_sales.py "$kw"
+  fi
   sleep 30
 done < "$KEYWORDS_FILE"
 echo "[$(date)] === run complete ==="

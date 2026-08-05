@@ -1,4 +1,12 @@
-# Products to track continuously — one keyword per line.
+# Products / categories to track continuously — one entry per line.
 # Lines starting with # and blank lines are ignored.
-# Edit this list to match the products/categories you want monitored.
+#
+# Each line is either:
+#   • a search keyword          e.g.   stanley quencher
+#   • a seedless category sweep e.g.   cat:1904 home & living
+#         "cat:<vinted category id> <label>" collects a WHOLE category with no keyword
+#         (Phase 6). Find the id in the Vinted URL when browsing a category (catalog[]=<id>).
+#
+# Edit this list to match what you want monitored.
 stanley quencher
+# cat:1904 home & living
