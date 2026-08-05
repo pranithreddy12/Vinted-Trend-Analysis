@@ -133,6 +133,30 @@ def print_top(ranked: list, n: int = 10) -> None:
         print("  ⏳ momentum builds as daily history accumulates (needs ≥2 days of snapshots)")
 
 
+def alerts(ranked: list, min_score: int = 70) -> list:
+    """Smart alerts — the actionable subset of the ranking: products worth buying to resell NOW.
+    An item alerts when its discovery score clears the bar AND it has real demand AND it isn't
+    already saturated. Tagged RISING when momentum is strong, else HOT. (True 'brand-new product'
+    novelty needs a first-seen set, a small add once history exists — see Phase 6 notes.)"""
+    out = []
+    for v in ranked:
+        strong_demand = v.get("demand_level") in ("High", "Medium")
+        not_saturated = str(v.get("competition_level", "")).lower() in ("low", "medium", "")
+        if v.get("discovery_score", 0) >= min_score and strong_demand and not_saturated:
+            out.append({**v, "alert": "RISING" if v.get("momentum_pct", 0) >= 30 else "HOT"})
+    return out
+
+
+def print_alerts(alerted: list) -> None:
+    if not alerted:
+        return
+    print("\n🔔 SMART ALERTS — profitable products worth acting on")
+    print("─" * 64)
+    for v in alerted:
+        name = v.get("ai_product") or v.get("product") or v.get("variant")
+        print(f"  [{v['alert']:6}] {name}  — {v['reason']}")
+
+
 def _demo() -> None:
     """Self-check (no I/O): momentum direction + magnitude, and momentum lifting the rank."""
     assert momentum([("d1", 10), ("d2", 20), ("d3", 30)]) > 0.5, "rising series"
@@ -145,6 +169,15 @@ def _demo() -> None:
     r = _reason({"demand_level": "High", "median_days_to_sell": 3,
                  "competition_level": "Low"}, 40)
     assert "rising +40%" in r and "low competition" in r.lower(), r
+    # Alerts: a high-score, in-demand, un-saturated item fires (RISING when momentum strong);
+    # a saturated one does not.
+    hot = {"discovery_score": 80, "demand_level": "High", "competition_level": "Low",
+           "momentum_pct": 45, "product": "x", "reason": ""}
+    sat = {"discovery_score": 80, "demand_level": "High", "competition_level": "High",
+           "momentum_pct": 45, "product": "y", "reason": ""}
+    al = alerts([hot, sat])
+    assert len(al) == 1 and al[0]["alert"] == "RISING", al
+    assert alerts([sat]) == [], "saturated item must not alert"
     print("discover_opportunities self-check OK:", repr(r))
 
 

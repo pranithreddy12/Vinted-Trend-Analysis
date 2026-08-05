@@ -1354,6 +1354,7 @@ def main():
             import discover_opportunities as disc
             ranked = disc.rank_opportunities(variants, _slug(keyword))
             disc.print_top(ranked)
+            disc.print_alerts(disc.alerts(ranked))  # smart alerts: the actionable subset
             opath = disc.save_opportunities_report(ranked, _slug(keyword))
             print(f"💾 Opportunities report saved: {opath} ({len(ranked)} ranked)")
         except Exception as e:
