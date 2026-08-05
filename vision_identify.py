@@ -387,25 +387,55 @@ def identify_listings(raw_catalog_items: list, slug: str,
     listings = ic.listings_from_catalog(raw_catalog_items)
     listings.sort(key=lambda ls: likes.get(str(ls.id), 0), reverse=True)
 
+    # Product-level reuse (opt-in VINTED_DEDUP=1): identify each PRODUCT once and reuse it for
+    # other sellers' listings of the same thing, instead of paying the AI per listing. Photos are
+    # embedded locally (CLIP — free) and matched within the same colour+capacity; only genuinely
+    # new products cost an AI call. Degrades gracefully to per-listing if CLIP isn't available.
+    registry = None
+    if os.environ.get("VINTED_DEDUP") == "1":
+        try:
+            import product_dedup
+            registry = product_dedup.ProductRegistry(slug)
+            ic.embed_listings(listings, ic.EmbeddingCache(f"dedup_{ic._safe(slug)}"))
+        except Exception as e:
+            print(f"⚠️  product dedup disabled ({type(e).__name__}: {e}); per-listing only")
+            registry = None
+
     # Provider-tagged cache: a cached result from a DIFFERENT provider (e.g. the free
     # stub, or a different model) is treated as a miss and re-identified. Without this, a
     # stub run's placeholder titles would be silently reused on the first real-model run.
     pname = type(provider).__name__
-    out, new = {}, 0
+    out, new, reused = {}, 0, 0
     for ls in listings:
-        cached = cache.get(ls.id)
-        if cached is None or cached.get("_provider") != pname:
-            if max_new is not None and new >= max_new:
-                continue  # cost cap reached this run; remaining listings resolve next run
-            cached = provider.identify(ls.photo_url, title_hint=ls.title)
-            cached["_provider"] = pname
-            cache.put(ls.id, cached)
-            new += 1
         lc = (colours or {}).get(str(ls.id), "")  # listing's declared colour, if the caller has it
         sz = sizes.get(str(ls.id), "")            # listing's declared clothing size (catalog)
+        cached = cache.get(ls.id)
+        if cached is None or cached.get("_provider") != pname:
+            reuse = None
+            if registry is not None:
+                import product_dedup
+                col_k, cap_k = product_dedup.listing_keys(ls, lc)
+                reuse = registry.find(col_k, cap_k, getattr(ls, "emb", None))
+            if reuse is not None:
+                cached = {**reuse, "_provider": pname, "_reused": True}  # no AI call
+                cache.put(ls.id, cached)
+                reused += 1
+            else:
+                if max_new is not None and new >= max_new:
+                    continue  # cost cap reached this run; remaining listings resolve next run
+                cached = provider.identify(ls.photo_url, title_hint=ls.title)
+                cached["_provider"] = pname
+                cache.put(ls.id, cached)
+                new += 1
+                if registry is not None:
+                    registry.add(col_k, cap_k, getattr(ls, "emb", None), cached)
         out[ls.id] = {**cached, "generated_title": compose_title(cached, ls.title, lc, sz)}
-    if new:
+    if new or reused:
         cache.save()
+    if registry is not None:
+        registry.save()
+        print(f"   ♻️  product dedup: {reused} listings reused a known product, "
+              f"{new} new AI calls (saved {reused})")
     return out
 
 
