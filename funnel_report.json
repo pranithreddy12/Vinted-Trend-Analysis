@@ -1,0 +1,12 @@
+{
+  "total_listings": 10000,
+  "stage1_title_resolved": 661,
+  "stage1_pct": 6.6,
+  "matured_brand_listings": 1131,
+  "matured_brand_resolved": 503,
+  "remaining_after_title": 9339,
+  "sample_size": 300,
+  "stage2_local_rate": 0.453,
+  "stage3_vision_rate": 0.547,
+  "distinct_ratio": 0.948
+}

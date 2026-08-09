@@ -1,101 +1,101 @@
 rank,term,demand_score,listings,avg_offers,is_seed
-1,stanley,268.5,345,0.1,yes
-2,bottle,96.5,146,0.0,yes
-3,cup,87.5,89,0.2,no
-4,stanley cup,74.0,68,0.3,no
-5,tumbler,54.5,73,0.1,no
-6,water,28.5,48,0.0,no
-7,water bottle,27.5,46,0.0,no
-8,quencher,26.0,33,0.0,no
-9,stanley quencher,19.0,25,0.0,no
-10,stanley tumbler,17.0,16,0.4,no
-11,classic,16.5,20,0.0,no
-12,18l,16.0,18,0.0,no
-13,flowstate,13.5,17,0.0,no
-14,straw,13.5,25,0.0,no
-15,iceflow,13.0,24,0.0,no
-16,holder,13.0,24,0.0,no
-17,stanley bottle,12.5,15,0.0,yes
-18,40oz,12.0,16,0.0,no
-19,bottle holder,10.5,20,0.0,no
-20,classic bottle,10.0,11,0.0,no
-21,stanley iceflow,10.0,18,0.0,no
-22,thermosflasche,9.0,5,0.8,no
-23,stanley classic,9.0,13,0.0,no
-24,dupe,9.0,9,0.0,no
-25,thermoskanne,8.5,6,0.7,no
-26,stanley dupe,8.5,8,0.0,no
-27,flip,8.5,15,0.0,no
-28,rose,8.0,8,0.0,no
-29,nieuw,8.0,10,0.0,no
-30,flowstate tumbler,8.0,12,0.0,no
-31,mug,7.5,9,0.0,no
-32,gourde,7.5,7,0.6,no
-33,flip straw,7.0,12,0.0,no
-34,beige,6.5,9,0.0,no
-35,stanley water,6.5,11,0.0,no
-36,insulated,6.5,12,0.0,no
-37,purple,6.5,12,0.0,no
-38,stanley aladdin,6.0,2,2.0,no
-39,iceflow bottle,6.0,12,0.0,no
-40,isotherme,5.5,4,0.0,no
-41,slim bottle,5.5,6,0.0,no
-42,steel,5.5,11,0.0,no
-43,crochet,5.5,10,0.0,no
-44,legendary,5.0,7,0.0,no
-45,vacuum,5.0,7,0.0,no
-46,bag,5.0,8,0.0,no
-47,cross,4.5,6,0.0,no
-48,18l 40oz,4.5,3,0.0,no
-49,30oz,4.5,4,0.0,no
-50,primark,4.5,3,0.0,no
-51,stainless steel,4.5,9,0.0,no
-52,quencher protour,4.0,2,0.0,no
-53,bottle quencher,4.0,2,0.0,no
-54,protour tumbler,4.0,2,0.0,no
-55,cross bottle,4.0,5,0.0,no
-56,stanley cross,4.0,5,0.0,no
-57,iceflow flip,4.0,6,0.0,no
-58,black,4.0,7,0.0,no
-59,blue,4.0,7,0.0,no
-60,crochet water,4.0,7,0.0,no
-61,becher,4.0,6,0.0,no
-62,all,3.5,5,0.0,no
-63,limited,3.5,7,0.0,no
-64,legendary classic,3.0,3,0.0,no
-65,stanley slim,3.0,3,0.0,no
-66,stanley adventure,3.0,3,0.0,no
-67,bottle nieuw,3.0,4,0.0,no
-68,wasserflasche,3.0,3,0.0,no
-69,travel,3.0,6,0.0,no
-70,tumbler 40oz,3.0,5,0.0,no
-71,stanley all,3.0,4,0.0,no
-72,all day,3.0,4,0.0,no
-73,thermos,3.0,6,0.0,no
-74,grey,3.0,6,0.0,no
-75,aerolight,3.0,6,0.0,no
-76,59l,3.0,5,0.0,no
-77,green,3.0,6,0.0,no
-78,creme,3.0,4,0.0,no
-79,gourde stanley,3.0,2,2.0,no
-80,bottle mug,2.5,2,0.0,no
-81,ash,2.5,2,0.0,no
-82,classic vacuum,2.5,2,0.0,no
-83,frgmt,2.5,2,0.0,no
-84,mini stanley,2.5,2,0.0,no
-85,owala,2.5,2,0.0,no
-86,dupe water,2.5,2,0.0,no
-87,straw tumbler,2.5,4,0.0,no
-88,liter,2.5,4,0.0,no
-89,day slim,2.5,3,0.0,no
-90,89l,2.5,4,0.0,no
-91,weiß,2.5,4,0.0,no
-92,termica,2.5,4,0.0,no
-93,borraccia,2.5,5,0.0,no
-94,lilac,2.5,5,0.0,no
-95,holder bag,2.5,4,0.0,no
-96,set,2.5,5,0.0,no
-97,stanley aerolight,2.5,5,0.0,no
-98,rose quartz,2.0,3,0.0,no
-99,brand,2.0,3,0.0,no
-100,tumbler 30oz,2.0,2,0.0,no
+1,stanley,205.0,181,0.5,yes
+2,quencher,136.0,109,0.7,yes
+3,tumbler,72.0,49,0.7,no
+4,stanley quencher,69.5,62,0.7,yes
+5,cup,49.5,38,0.3,no
+6,1.18l,49.0,36,0.7,no
+7,stanley cup,48.0,35,0.3,no
+8,40oz,35.0,25,0.9,no
+9,gourde,32.5,20,0.6,no
+10,rose,31.5,27,0.4,yes
+11,flowstate,30.0,29,0.6,no
+12,barbie,29.0,18,1.2,no
+13,borraccia,23.5,7,1.6,no
+14,borraccia stanley,22.5,5,2.2,no
+15,flowstate tumbler,21.5,16,0.9,no
+16,roze,21.0,5,3.4,no
+17,gourde stanley,21.0,16,0.5,no
+18,stanley cup quencher,20.0,8,0.9,no
+19,40oz 1.18l,20.0,10,1.7,no
+20,icon,18.5,5,3.6,no
+21,neuve,18.5,4,2.0,no
+22,stanley icon quencher,18.0,4,4.5,no
+23,colore,16.5,2,3.5,no
+24,cherry blossom,16.5,2,3.5,no
+25,tumbler 40oz 1.18l,15.5,4,3.5,no
+26,flowstate tumbler 40oz 1.18l,15.0,3,4.7,no
+27,rose 1.18l,14.5,3,2.7,no
+28,stanley cup rose,14.5,3,1.7,no
+29,rosa,13.5,13,0.5,no
+30,licht roze,13.0,2,5.5,no
+31,1.18l neuve,12.5,2,2.5,no
+32,becher,10.5,8,0.8,no
+33,stanley gourde,10.5,2,2.0,no
+34,tumbler 1.18l,8.5,12,0.0,no
+35,40oz quencher,8.0,3,2.0,no
+36,liter,8.0,3,2.0,no
+37,loveshackfancy,8.0,9,0.3,no
+38,für,7.5,2,3.0,no
+39,1.2l,6.0,12,0.0,no
+40,stanley tumbler,6.0,3,1.3,no
+41,loveshackfancy quencher,5.5,4,0.8,no
+42,ovp,4.5,2,1.5,no
+43,barbie stanley,4.5,2,1.5,no
+44,édition limitée,4.5,2,1.5,no
+45,rose quartz,4.5,9,0.0,no
+46,gobelet stanley,4.0,4,0.8,no
+47,limited,4.0,7,0.0,no
+48,gobelet stanley quencher,3.5,3,1.0,no
+49,gourde stanley quencher,3.5,4,0.8,no
+50,stanley rose,3.5,7,0.0,yes
+51,quencher 1.2l,3.0,6,0.0,no
+52,termo,3.0,6,0.0,no
+53,0.89l,3.0,6,0.0,no
+54,straw,2.5,5,0.0,no
+55,quencher 40oz,2.5,5,0.0,no
+56,personnalisé,2.5,2,1.5,no
+57,met,2.5,2,1.5,no
+58,nieuwe,2.5,2,1.5,no
+59,flip straw,2.0,4,0.0,no
+60,quencher carry all,2.0,4,0.0,no
+61,stanley quencher 1.2l,2.0,4,0.0,no
+62,vaso,2.0,4,0.0,no
+63,flowstate tumbler 1.18l,2.0,4,0.0,no
+64,stanley loveshackfancy,2.0,4,0.0,no
+65,starbucks,2.0,4,0.0,no
+66,plateau,2.0,3,0.0,no
+67,gourde stanley rose,2.0,4,0.0,no
+68,beker,1.5,2,0.0,no
+69,peach,1.5,2,0.0,no
+70,protour flip straw tumbler,1.5,3,0.0,no
+71,quencher protour flip straw,1.5,3,0.0,no
+72,barbie quencher,1.5,3,0.0,no
+73,termo stanley,1.5,3,0.0,no
+74,quencher tumbler,1.5,3,0.0,no
+75,tumbler rose,1.5,3,0.0,no
+76,stanley quencher 40oz,1.5,3,0.0,no
+77,flowstate quencher,1.5,3,0.0,no
+78,all day,1.5,3,0.0,no
+79,flowstate tumbler 0.89l,1.5,3,0.0,no
+80,vaso térmico stanley quencher,1.5,3,0.0,no
+81,40oz rosa,1.5,2,0.0,no
+82,quencher flowstate,1.5,3,0.0,no
+83,30oz,1.5,3,0.0,no
+84,mug,1.5,3,0.0,no
+85,lot,1.5,3,0.0,no
+86,stanley barbie,1.5,3,0.0,no
+87,stanley cup 40oz,1.5,2,0.0,no
+88,accessoires,1.5,2,0.0,no
+89,stanley becher,1.5,3,0.0,no
+90,tragetasche,1.5,3,0.0,no
+91,tumbler 1.2l,1.0,2,0.0,no
+92,barbie quencher 40oz,1.0,2,0.0,no
+93,stanley quencher tumbler,1.0,2,0.0,no
+94,40oz quencher carry all,1.0,2,0.0,no
+95,fuchsia,1.0,2,0.0,no
+96,all day quencher carry,1.0,2,0.0,no
+97,quencher carry all rose,1.0,2,0.0,no
+98,day quencher carry all,1.0,2,0.0,no
+99,carry all rose quartz,1.0,2,0.0,no
+100,1.18l 40oz,1.0,2,0.0,no

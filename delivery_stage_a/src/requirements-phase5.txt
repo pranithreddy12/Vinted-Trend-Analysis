@@ -1,0 +1,12 @@
+# Phase 5 — visual variant recognition (image_cluster.py). Only needed if you turn on
+# VINTED_VISUAL=1. Not required for Phase 1-4 — install this only when Phase 5 is enabled.
+torch
+transformers
+pillow
+scikit-learn
+numpy
+
+# Phase 5 Stage A — vision-AI product identification (vision_identify.py). Only needed when
+# VINTED_VISION_PROVIDER=anthropic (i.e. once the client's API key is configured). The
+# default 'stub' provider needs nothing here.
+anthropic>=0.69   # <0.40 passes proxies= to httpx>=0.28 and crashes at client init
