@@ -105,19 +105,30 @@ def _extract_json(text: str) -> dict:
     return {}
 
 
+_EXT_MEDIA = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+              "webp": "image/webp", "gif": "image/gif"}
+
+
 def _image_block(photo_url: str) -> dict | None:
-    """Download the photo and return a base64 image content block. base64 is the one source
-    type every anthropic-compatible endpoint accepts (Ollama only takes base64; Claude takes
-    both) — so this keeps one code path for any provider."""
+    """Return a base64 image content block for a photo, from a URL OR a local file path. base64
+    is the one source type every anthropic-compatible endpoint accepts (Ollama only takes base64;
+    Claude takes both) — so this keeps one code path for any provider. Local-file support lets us
+    test reference photos (e.g. a new category) before they're in the catalog."""
     try:
-        r = requests.get(photo_url, headers=ic._UA, timeout=ic.DOWNLOAD_TIMEOUT)
-        if r.status_code != 200 or not r.content:
-            return None
-        media = (r.headers.get("content-type") or "").split(";")[0].strip()
-        if not media.startswith("image/"):
-            media = "image/jpeg"  # Vinted CDN serves jpeg; header sometimes generic
+        if os.path.exists(photo_url):                       # local reference image
+            with open(photo_url, "rb") as f:
+                content = f.read()
+            media = _EXT_MEDIA.get(os.path.splitext(photo_url)[1].lower().lstrip("."), "image/jpeg")
+        else:                                               # remote (Vinted CDN)
+            r = requests.get(photo_url, headers=ic._UA, timeout=ic.DOWNLOAD_TIMEOUT)
+            if r.status_code != 200 or not r.content:
+                return None
+            content = r.content
+            media = (r.headers.get("content-type") or "").split(";")[0].strip()
+            if not media.startswith("image/"):
+                media = "image/jpeg"  # Vinted CDN serves jpeg; header sometimes generic
         return {"type": "image", "source": {"type": "base64", "media_type": media,
-                                            "data": base64.standard_b64encode(r.content).decode()}}
+                                            "data": base64.standard_b64encode(content).decode()}}
     except Exception:
         return None
 
