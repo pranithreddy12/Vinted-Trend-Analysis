@@ -103,6 +103,7 @@ def rank_opportunities(variants: list, slug: str = "", top_n: int = 20,
         out["history_points"] = len(pts)
         out["discovery_score"] = discovery_score(v, mom)
         out["reason"] = _reason(out, out["momentum_pct"])
+        out["explanation"] = "; ".join(explain(out))   # data-grounded "why", for the report
         ranked.append(out)
     ranked.sort(key=lambda x: (x["discovery_score"], x.get("est_sales_30d", 0)), reverse=True)
     return ranked[:top_n] if top_n else ranked
@@ -112,7 +113,7 @@ def save_opportunities_report(ranked: list, slug: str = "") -> str:
     path = f"opportunities_{slug}.csv" if slug else "opportunities.csv"
     fields = ["rank", "variant", "product", "ai_product", "discovery_score", "momentum_pct",
               "history_points", "est_sales_30d", "demand_level", "median_days_to_sell",
-              "competition", "competition_level", "trend", "avg_price", "reason"]
+              "competition", "competition_level", "trend", "avg_price", "explanation"]
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
@@ -133,6 +134,34 @@ def print_top(ranked: list, n: int = 10) -> None:
         print("  ⏳ momentum builds as daily history accumulates (needs ≥2 days of snapshots)")
 
 
+def explain(v: dict) -> list:
+    """Plain-language reasons a product is an opportunity, grounded in the collected data — the
+    "why" the client wants instead of a bare score (e.g. "sales up 45% recently", "~100
+    sales/month", "typically sells in ~24h", "low competition"). Data-driven, not AI-written
+    (a richer AI narrative is the AI-Insights phase); every line comes straight from a metric."""
+    bits = []
+    mom = v.get("momentum_pct", 0)
+    if mom >= 10:
+        bits.append(f"sales up {mom}% recently")
+    elif mom <= -10:
+        bits.append(f"sales cooling {abs(mom)}% recently")
+    est = v.get("est_sales_30d")
+    if est:
+        bits.append(f"~{round(est)} sales/month")
+    md = v.get("median_days_to_sell")
+    if md:
+        bits.append(f"typically sells in ~{round(md * 24)}h" if md < 2
+                    else f"typically sells in ~{md} days")
+    cl = v.get("competition_level")
+    if cl:
+        n = v.get("competition")
+        bits.append(f"{str(cl).lower()} competition" + (f" ({n} listings)" if n else ""))
+    off = v.get("offers")
+    if off:
+        bits.append(f"{off} recent buyer offers")
+    return bits
+
+
 def alerts(ranked: list, min_score: int = 70) -> list:
     """Smart alerts — the actionable subset of the ranking: products worth buying to resell NOW.
     An item alerts when its discovery score clears the bar AND it has real demand AND it isn't
@@ -150,11 +179,13 @@ def alerts(ranked: list, min_score: int = 70) -> list:
 def print_alerts(alerted: list) -> None:
     if not alerted:
         return
-    print("\n🔔 SMART ALERTS — profitable products worth acting on")
+    print("\n🔔 SMART ALERTS — why these products deserve attention")
     print("─" * 64)
     for v in alerted:
         name = v.get("ai_product") or v.get("product") or v.get("variant")
-        print(f"  [{v['alert']:6}] {name}  — {v['reason']}")
+        print(f"  [{v['alert']}] {name}")
+        for line in explain(v):
+            print(f"       • {line}")
 
 
 def _demo() -> None:
@@ -178,7 +209,12 @@ def _demo() -> None:
     al = alerts([hot, sat])
     assert len(al) == 1 and al[0]["alert"] == "RISING", al
     assert alerts([sat]) == [], "saturated item must not alert"
-    print("discover_opportunities self-check OK:", repr(r))
+    # explain(): plain-language, data-grounded reasons matching the client's examples.
+    ex = explain({"momentum_pct": 45, "est_sales_30d": 100, "median_days_to_sell": 1,
+                  "competition_level": "Low", "competition": 12})
+    assert "sales up 45% recently" in ex and "~100 sales/month" in ex, ex
+    assert "typically sells in ~24h" in ex, ex          # <2 days rendered in hours
+    print("discover_opportunities self-check OK:", ex)
 
 
 if __name__ == "__main__":
