@@ -8,5 +8,33 @@
 #         (Phase 6). Find the id in the Vinted URL when browsing a category (catalog[]=<id>).
 #
 # Edit this list to match what you want monitored.
+
+# ---- Stanley ----
 stanley quencher
+stanley iceflow
+stanley loveshackfancy
+
+# ---- Smeg ----  (kept specific: "smeg bottle" alone also pulls Smeg kitchen appliances)
+smeg insulated bottle
+smeg tumbler
+
+# ---- Owala ----
+owala bottle
+
+# ---- Alo Yoga ----
+alo yoga set
+
+# ---- Ralph Lauren ----
+ralph lauren t-shirt
+
+# ---- Jellycat (per character — plush have no colour/size variants to group by) ----
+jellycat dragon
+jellycat boiled egg
+jellycat marshmallow
+jellycat croissant
+jellycat monkey
+jellycat fancy carp
+
+# ---- Autonomous category discovery (Phase 6) — add once you choose categories ----
+# cat:<id> <label>    (find <id> in the Vinted URL when browsing a category: catalog[]=<id>)
 # cat:1904 home & living
