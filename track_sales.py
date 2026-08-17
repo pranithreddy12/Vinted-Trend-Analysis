@@ -38,7 +38,8 @@ TRACK_FIELDS = [
     "created_at_ts",
     "first_seen",
     "last_seen",
-    "status",          # active | disappeared
+    "status",          # active | disappeared | sold | removed  (sold/removed set by verification)
+    "sale_confirmed",  # True only when Vinted's item page actually showed "Sold" (VINTED_VERIFY_SOLD)
     "disappeared_at",
     "lifespan_hours",  # publish → disappearance (true time-to-sell, if created_at known)
     "hours_tracked",   # first_seen → disappearance (what we directly observed)
@@ -126,6 +127,7 @@ def update_tracking(tracking: dict, current_items: list, now: datetime) -> tuple
                 "first_seen": now_str,
                 "last_seen": now_str,
                 "status": "active",
+                "sale_confirmed": "",
                 "disappeared_at": "",
                 "lifespan_hours": "",
                 "hours_tracked": "",
@@ -665,6 +667,12 @@ def _load_vision_identities(slug: str) -> dict:
         return {}
 
 
+def _verify_sold_on() -> bool:
+    """True when sold-verification is enabled — sales then require a Vinted-confirmed 'sold'
+    status, not a bare disappearance."""
+    return os.environ.get("VINTED_VERIFY_SOLD") == "1"
+
+
 def variant_analysis(
     tracking: dict,
     now: datetime | None = None,
@@ -754,7 +762,10 @@ def variant_analysis(
                     g["offers_listings"] += 1
                 except (ValueError, TypeError):
                     pass
-        elif r["status"] == "disappeared":
+        # A sale counts only when confirmed. With VINTED_VERIFY_SOLD on, that means a verified
+        # "sold" status; with it off, we fall back to the legacy disappearance proxy. "removed"
+        # and unverified "disappeared" (in verify mode) are NEVER counted as sales.
+        elif r["status"] == "sold" or (r["status"] == "disappeared" and not _verify_sold_on()):
             g["gone"] += 1
             lh = r.get("lifespan_hours")
             if lh not in ("", None):
@@ -1082,6 +1093,106 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
     return captured
 
 
+# ─────────────────────────────────────────
+# SOLD VERIFICATION (VINTED_VERIFY_SOLD=1)
+# ─────────────────────────────────────────
+# A disappeared listing is NOT a sale. When a listing leaves the active catalog we open its
+# item page and read Vinted's real status: only pages Vinted actually marks "Sold/Vendu" become
+# sales; 404/removed/unavailable are excluded; a page that's live again was a glitch (revert to
+# active). Anything we couldn't verify stays "disappeared" and is NOT counted as a sale.
+
+def _verify_sold_from_page(page, item_id: str) -> str:
+    """Return the verified outcome for a disappeared listing:
+    'sold' | 'removed' | 'active' | 'disappeared' (unverified). Raises RateLimited on a 429."""
+    url = f"https://www.vinted.fr/items/{item_id}"
+    try:
+        resp = page.goto(url, timeout=30000, wait_until="domcontentloaded")
+    except Exception:
+        return "disappeared"                     # couldn't load — leave unverified, never a sale
+    if resp is not None and resp.status == 429:
+        raise RateLimited()
+    if resp is not None and resp.status in (404, 410):
+        return "removed"                         # page gone — deleted/pulled, not a sale
+    try:
+        sold, status = fr.detect_sold_status(page)
+    except Exception:
+        return "disappeared"
+    if sold:
+        return "sold"                            # Vinted shows Sold/Vendu — a CONFIRMED sale
+    if status == "unavailable":
+        return "removed"
+    if status == "active":
+        return "active"                          # still live — relist/glitch, revert
+    return "disappeared"
+
+
+def _verify_sold_worker(item_id: str):
+    """Thread worker mirroring _publish_ts_worker: own tab over CDP, verify one listing's
+    real sold status, respect the shared rate-limit back-off."""
+    for _attempt in range(3):
+        _wait_for_rate_limit()
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                context = browser.contexts[0]
+                page = context.new_page()
+                try:
+                    return item_id, _verify_sold_from_page(page, item_id)
+                finally:
+                    page.close()
+                    time.sleep(random.uniform(0.3, 0.9))
+        except RateLimited:
+            if _begin_hold_become_prober():
+                _probe_until_clear(item_id)
+            else:
+                _wait_for_rate_limit()
+        except Exception:
+            return item_id, "disappeared"
+    return item_id, "disappeared"
+
+
+def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2) -> dict:
+    """Verify the real status of newly-disappeared listings and reclassify them:
+    sold → confirmed sale; removed → excluded; active → reverted; else left unverified.
+    Only runs when VINTED_VERIFY_SOLD=1. Returns a small tally for the report."""
+    if not ids:
+        return {}
+    workers = int(os.environ.get("VINTED_TRACK_WORKERS", workers))
+    print(f"\n🔎 Verifying sold status of {len(ids)} disappeared listings via {workers} tabs "
+          f"(a disappearance is not a sale until Vinted confirms it)...")
+    tally = collections.Counter()
+    done = 0
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_verify_sold_worker, iid): iid for iid in ids}
+        for future in as_completed(futures):
+            iid = futures[future]
+            try:
+                _id, outcome = future.result()
+            except Exception:
+                outcome = "disappeared"
+            row = tracking.get(iid)
+            if row is not None:
+                if outcome == "sold":
+                    row["status"], row["sale_confirmed"] = "sold", True
+                elif outcome == "removed":
+                    row["status"], row["sale_confirmed"] = "removed", False
+                elif outcome == "active":
+                    row["status"] = "active"
+                    row["disappeared_at"] = row["lifespan_hours"] = row["hours_tracked"] = ""
+                    row["sale_confirmed"] = ""
+                else:
+                    row["sale_confirmed"] = False   # unverified — stays "disappeared", not a sale
+            tally[outcome] += 1
+            done += 1
+            if done % 25 == 0:
+                print(f"   ...{done}/{len(ids)} verified")
+                save_tracking(path, tracking)
+    save_tracking(path, tracking)
+    print(f"   → confirmed sold: {tally['sold']} · removed: {tally['removed']} · "
+          f"relisted/active: {tally['active']} · unverified: {tally['disappeared']}")
+    return dict(tally)
+
+
 def _median(vals):
     vals = [v for v in vals if v not in ("", None)]
     return round(statistics.median(float(v) for v in vals), 1) if vals else None
@@ -1089,18 +1200,29 @@ def _median(vals):
 
 def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run: bool):
     total = len(tracking)
-    active = sum(1 for r in tracking.values() if r["status"] == "active")
-    gone = [r for r in tracking.values() if r["status"] == "disappeared"]
+    st = collections.Counter(r["status"] for r in tracking.values())
+    active = st["active"]
 
     print("\n" + "=" * 60)
     print(f"📦 SALES TRACKING — {keyword}")
     print("=" * 60)
     print(f"  Tracked (all time):   {total}")
     print(f"  Currently active:     {active}")
-    print(f"  Sold / removed:       {len(gone)}")
+    if _verify_sold_on():
+        # Verified mode: report confirmed sales separately from removed / unverified, so a
+        # disappearance is never presented as a sale.
+        print(f"  Confirmed sold:       {st['sold']}")
+        print(f"  Removed (not a sale): {st['removed']}")
+        print(f"  Disappeared (unverified, NOT counted): {st['disappeared']}")
+    else:
+        print(f"  Sold / removed:       {st['disappeared']}")
     print(f"  New this run:         {newly}")
     print(f"  Disappeared this run: {disappeared}")
 
+    # Time-to-sell distribution is built from COUNTED sales only (verified "sold", or — with
+    # verification off — the legacy disappearance proxy).
+    gone = [r for r in tracking.values()
+            if r["status"] == "sold" or (r["status"] == "disappeared" and not _verify_sold_on())]
     if gone:
         # Time-to-sell from the listing's posting date. Show the DISTRIBUTION,
         # because a single median is dominated by old stock that lingered months.
@@ -1291,6 +1413,19 @@ def main():
         sys.exit(3)
 
     newly, disappeared = update_tracking(tracking, raw, now)
+
+    # Data reliability (opt-in VINTED_VERIFY_SOLD=1): a disappeared listing is NOT a sale.
+    # Verify each newly-disappeared listing against Vinted's real item-page status — only the
+    # ones actually marked Sold become sales; removed/deleted are excluded, relisted revert.
+    if os.environ.get("VINTED_VERIFY_SOLD") == "1":
+        now_str = _fmt(now)
+        gone_ids = [iid for iid, r in tracking.items()
+                    if r["status"] == "disappeared" and r.get("disappeared_at") == now_str]
+        try:
+            verify_disappearances(tracking, path, gone_ids)
+            save_tracking(path, tracking)
+        except Exception as e:
+            print(f"⚠️  sold verification skipped: {type(e).__name__}: {e}")
 
     # Phase 5 (opt-in): embed new listings' cover photos and assign stable visual
     # variant ids. MUST happen at fetch time — Vinted photo URLs expire, so a
