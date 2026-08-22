@@ -3,11 +3,18 @@ Phase 4 — Sales-Tracking PoC.
 
 Follows the listings for ONE product over time and measures how fast they sell.
 
-Mechanism: each run fetches the COMPLETE active catalog for a keyword and diffs it
-against what we saw before. A listing that was active before and is now gone has
-sold or been removed — that disappearance, and the time it took, is the turnover
-signal. (Sold items leave Vinted's active catalog, which is exactly what makes this
-work.)
+Mechanism: each run fetches the active catalog for a keyword and diffs it against what we
+saw before. A listing that leaves the catalog MAY have sold — but a disappearance is never
+by itself treated as a sale. Two guards make the signal trustworthy:
+
+  1. DEBOUNCE (DISAPPEARANCE_RUNS) — Vinted's search returns a different subset each run, so
+     one absence proves nothing. Measured live: of 429 listings missing from a fetch, 350
+     (82%) were still active on Vinted. A listing must be absent from N consecutive runs.
+  2. SOLD VERIFICATION (VINTED_VERIFY_SOLD=1) — when it does disappear, we open its item page
+     and read Vinted's real status. Only "Sold/Vendu" counts as a sale; deleted/removed are
+     excluded; anything unconfirmed is left uncounted rather than guessed.
+
+Without these, disappearance-as-sale overcounted sales by ~10x on real data.
 
 Usage (same Chrome+CDP setup as the main scraper — run start_scraper-style Chrome first):
     python track_sales.py "stanley quencher"
@@ -40,6 +47,7 @@ TRACK_FIELDS = [
     "last_seen",
     "status",          # active | disappeared | sold | removed  (sold/removed set by verification)
     "sale_confirmed",  # True only when Vinted's item page actually showed "Sold" (VINTED_VERIFY_SOLD)
+    "missed_runs",     # consecutive runs this listing was absent from the catalog (debounce)
     "disappeared_at",
     "lifespan_hours",  # publish → disappearance (true time-to-sell, if created_at known)
     "hours_tracked",   # first_seen → disappearance (what we directly observed)
@@ -51,6 +59,12 @@ TRACK_FIELDS = [
 ]
 
 TS_FMT = "%Y-%m-%d %H:%M:%S"
+
+# How many CONSECUTIVE runs a listing must be absent from the catalog before we treat it as
+# disappeared. Vinted's search returns a different subset each run, so a single absence is not
+# evidence of anything: measured live on 429 absences, 350 (82%) were still active on Vinted.
+# 2 makes transient search churn self-correct for free. Override with VINTED_DISAPPEARANCE_RUNS.
+DISAPPEARANCE_RUNS = max(1, int(os.environ.get("VINTED_DISAPPEARANCE_RUNS", "2")))
 
 
 def _slug(keyword: str) -> str:
@@ -109,6 +123,8 @@ def update_tracking(tracking: dict, current_items: list, now: datetime) -> tuple
                 row["variant"] = build_variant(
                     row.get("title", ""), row.get("brand", ""), row.get("color", "")
                 )
+            # Present in this run: clear the absence counter (see DISAPPEARANCE_RUNS).
+            row["missed_runs"] = 0
             if row["status"] == "disappeared":
                 # Same listing id reappeared — un-mark it (rare; e.g. seller re-activated).
                 row["status"] = "active"
@@ -128,6 +144,7 @@ def update_tracking(tracking: dict, current_items: list, now: datetime) -> tuple
                 "last_seen": now_str,
                 "status": "active",
                 "sale_confirmed": "",
+                "missed_runs": 0,
                 "disappeared_at": "",
                 "lifespan_hours": "",
                 "hours_tracked": "",
@@ -140,6 +157,14 @@ def update_tracking(tracking: dict, current_items: list, now: datetime) -> tuple
     disappeared = 0
     for iid, row in tracking.items():
         if row["status"] == "active" and iid not in current_ids:
+            # DEBOUNCE — Vinted's search does not return a stable, complete set between runs:
+            # measured live, 82% of listings missing from one fetch were still active on Vinted
+            # (they had merely dropped out of the search results). Treating a single absence as
+            # a disappearance overcounted sales ~10x. Require N consecutive misses instead, so
+            # search churn resolves itself for free, before we spend any page loads verifying.
+            row["missed_runs"] = int(row.get("missed_runs") or 0) + 1
+            if row["missed_runs"] < DISAPPEARANCE_RUNS:
+                continue
             row["status"] = "disappeared"
             row["disappeared_at"] = now_str
             try:
