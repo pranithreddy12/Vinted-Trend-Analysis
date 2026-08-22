@@ -23,16 +23,14 @@ def snapshot_series(slug: str, max_days: int = 21) -> dict:
     d = ts.TRACK_DIR
     if not os.path.isdir(d):
         return {}
-    prefix = f"variants_{slug}_" if slug else "variants_"
-    files = sorted(
-        fn for fn in os.listdir(d)
-        if fn.startswith(prefix) and fn.endswith(".csv")
-        # without a slug, don't sweep up other products' namespaced snapshots
-        and (slug or fn[len("variants_"):-len(".csv")].count("_") == 0)
-    )[-max_days:]
+    # Strictly this product's own snapshots, ordered by real date. ts.snapshot_date rejects a
+    # different product whose slug merely starts with this one (e.g. slug "stanley_quencher"
+    # must NOT absorb "stanley_quencher_rose") — that mixed two products into one series and
+    # produced a bogus "+200% rising" on every variant.
+    dated = sorted((dt, fn) for fn in os.listdir(d)
+                   if (dt := ts.snapshot_date(fn, slug)))[-max_days:]
     series: dict = {}
-    for fn in files:
-        date = fn[len(prefix):-len(".csv")]
+    for date, fn in dated:
         try:
             with open(os.path.join(d, fn), encoding="utf-8") as f:
                 for row in csv.DictReader(f):
@@ -214,6 +212,16 @@ def _demo() -> None:
                   "competition_level": "Low", "competition": 12})
     assert "sales up 45% recently" in ex and "~100 sales/month" in ex, ex
     assert "typically sells in ~24h" in ex, ex          # <2 days rendered in hours
+    # REGRESSION: a slug must never absorb another product whose slug starts with it.
+    # "stanley_quencher" once swallowed "stanley_quencher_rose" snapshots, mixing two products
+    # into one series and faking "+200% rising" on every variant.
+    import track_sales as ts
+    assert ts.snapshot_date("variants_stanley_quencher_rose_2026-07-31.csv",
+                            "stanley_quencher") is None, "slug prefix collision must be rejected"
+    assert ts.snapshot_date("variants_stanley_quencher_2026-08-22.csv",
+                            "stanley_quencher") == "2026-08-22"
+    assert ts.snapshot_date("variants_2026-07-04.csv", "") == "2026-07-04"      # legacy
+    assert ts.snapshot_date("variants_stanley_quencher_2026-08-22.csv", "") is None
     print("discover_opportunities self-check OK:", ex)
 
 

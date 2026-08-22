@@ -624,6 +624,30 @@ def save_variant_snapshot(variants: list, slug: str = "") -> str | None:
     return path
 
 
+_SNAP_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def snapshot_date(filename: str, slug: str = "") -> str | None:
+    """Date of a `variants_[<slug>_]<date>.csv` snapshot, but ONLY if it belongs to exactly
+    `slug`. Returns None otherwise.
+
+    The remainder after the prefix must be exactly a date. A plain startswith() is not enough:
+    one slug can be a PREFIX of another, so "stanley_quencher" would also match
+    "variants_stanley_quencher_rose_<date>.csv" — a DIFFERENT product — silently mixing two
+    products' numbers into one trend/momentum series (observed live: it produced a bogus
+    "+200% rising" on every variant).
+    """
+    if not filename.startswith("variants_") or not filename.endswith(".csv"):
+        return None
+    stem = filename[len("variants_"):-len(".csv")]
+    if slug:
+        pre = slug + "_"
+        if not stem.startswith(pre):
+            return None
+        stem = stem[len(pre):]
+    return stem if _SNAP_DATE_RE.match(stem) else None
+
+
 def load_prev_variant_snapshot(exclude_date: str, slug: str = "") -> dict:
     """Load this product's most recent prior snapshot → {variant: est_sales_30d}.
 
@@ -634,15 +658,11 @@ def load_prev_variant_snapshot(exclude_date: str, slug: str = "") -> dict:
     """
     if not os.path.isdir(TRACK_DIR):
         return {}
-    prefix = f"variants_{slug}_" if slug else "variants_"
-    files = sorted(
-        fn
-        for fn in os.listdir(TRACK_DIR)
-        if fn.startswith(prefix) and fn.endswith(".csv")
-        and fn != f"{prefix}{exclude_date}.csv"
-        # Without a slug, don't sweep up other products' namespaced snapshots.
-        and (slug or fn[len("variants_"):-len(".csv")].count("_") == 0)
-    )
+    # Strictly this product's own snapshots (see snapshot_date — prefix matching alone would
+    # pull in a different product whose slug merely starts with this one).
+    dated = [(d, fn) for fn in os.listdir(TRACK_DIR)
+             if (d := snapshot_date(fn, slug)) and d != exclude_date]
+    files = [fn for _d, fn in sorted(dated)]
     if not files:
         return {}
     out = {}
