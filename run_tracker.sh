@@ -20,14 +20,24 @@ export VINTED_TRACK_WORKERS=2    # gentle — avoids Vinted's rate limiting
 # you only want to track a subset.
 export VINTED_DOMAINS="fr,be,lu,nl,de,at,es,pt,it,ie"
 
+# Data reliability: verify a disappearance against the real Vinted page before counting it
+# as a sale. ON by default — no extra cost (just item-page loads, same as publish-time
+# enrichment), and it fixed a ~10x sale overcount found on live data.
+export VINTED_VERIFY_SOLD=1
+# Opportunity ranking + alerts (Phase 6): pure computation on data already collected, no
+# extra cost. ON by default so opportunities_<slug>.csv builds up from the first run.
+export VINTED_DISCOVER=1
+
 # ---- Optional AI features (OFF by default — each spends your own Anthropic budget) ----
+# Cleared explicitly (not left unset) so a stray export/setx from earlier manual testing on
+# this machine can never silently turn AI spend on in an automated run.
+unset VINTED_VISION VINTED_VISION_PROVIDER VINTED_DEDUP VINTED_REFERENCE
 # Uncomment to enable during continuous collection. Cost scales with NEW distinct products,
 # not total listings, and VINTED_DEDUP cuts it further by identifying each product once.
 # export VINTED_VISION=1                    # AI product identification (Stage A)
 # export VINTED_VISION_PROVIDER=anthropic   # (needs ANTHROPIC_API_KEY in the environment)
 # export VINTED_DEDUP=1                     # reuse each product across sellers — big AI-cost cut
 # export VINTED_REFERENCE=1                 # reference lookup for generic items (Stage B)
-# export VINTED_DISCOVER=1                  # opportunity ranking + smart alerts (Phase 6, no AI cost)
 
 # Confirm the logged-in debug-Chrome is up; if not, stop (don't corrupt anything).
 if ! curl -s -m 3 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then

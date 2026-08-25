@@ -32,8 +32,15 @@ REM extra cost. ON by default so opportunities_<slug>.csv builds up from the fir
 set VINTED_DISCOVER=1
 
 REM ---- Optional AI features (OFF by default - each spends your own Anthropic budget) ----
-REM Uncomment to enable during continuous collection. Cost scales with NEW distinct products;
-REM VINTED_DEDUP cuts it further by identifying each product once and reusing across sellers.
+REM Cleared explicitly (not just left unset) so a stray "setx VINTED_VISION 1" left over from
+REM manual testing on this machine can never silently turn AI spend on in an automated run -
+REM this script is the single source of truth for what runs unattended. Uncomment a line below
+REM to actually enable a feature. Cost scales with NEW distinct products; VINTED_DEDUP cuts it
+REM further by identifying each product once and reusing across sellers.
+set VINTED_VISION=
+set VINTED_VISION_PROVIDER=
+set VINTED_DEDUP=
+set VINTED_REFERENCE=
 REM set VINTED_VISION=1
 REM set VINTED_VISION_PROVIDER=anthropic
 REM set VINTED_DEDUP=1
