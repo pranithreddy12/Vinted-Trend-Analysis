@@ -223,6 +223,10 @@ class RateLimited(Exception):
     pass
 
 
+_CONFIRM_CLEAR = max(1, int(os.environ.get("VINTED_RL_CONFIRM", 2)))  # consecutive clean
+# probes required before declaring the rate limit truly lifted (see _probe_until_clear)
+
+
 def _rate_limit_cooldown() -> float:
     """Initial quiet wait before we start gently refreshing to probe recovery."""
     try:
@@ -267,15 +271,21 @@ def _wait_for_rate_limit() -> None:
 def _probe_until_clear(item_id: str) -> None:
     """
     One tab handles recovery: wait quietly, then gently refresh a page until the
-    rate-limit clears (per your observation that refreshing eventually unblocks),
-    then release all tabs. Only this tab refreshes — the rest stay idle so we
-    don't keep hammering while blocked.
+    rate-limit clears, then release all tabs. Only this tab refreshes — the rest
+    stay idle so we don't keep hammering while blocked.
+
+    Requires _CONFIRM_CLEAR consecutive clean checks, not just one, before releasing.
+    Live-observed: a single successful probe is NOT reliable evidence Vinted's limit is
+    actually lifted (it took up to 12 refreshes to genuinely clear on a real run) —
+    releasing on one success let every worker retry at once, immediately re-tripping the
+    limit, which looked like tabs opening nonstop with no real cooldown.
     """
     cd = _rate_limit_cooldown()
     print(f"\n   ⛔ Rate limited by Vinted — pausing all tabs. Waiting {int(cd)}s, "
           f"then refreshing until it clears...")
     time.sleep(cd)
     url = f"https://www.vinted.fr/items/{item_id}"
+    consecutive_clear = 0
     for attempt in range(1, 41):  # cap the probing so it can't loop forever
         blocked = True
         try:
@@ -292,9 +302,19 @@ def _probe_until_clear(item_id: str) -> None:
         except Exception:
             pass
         if not blocked:
+            consecutive_clear += 1
+            if consecutive_clear < _CONFIRM_CLEAR:
+                print(f"   …looking clear ({consecutive_clear}/{_CONFIRM_CLEAR} confirmations); "
+                      f"double-checking before resuming")
+                time.sleep(random.uniform(4, 6))
+                continue
             print(f"   ✅ Rate limit cleared after {attempt} refresh(es) — resuming all tabs.")
+            # Stagger the release so waiting workers don't all retry in the same instant
+            # and immediately re-trip the limit as a synchronized burst.
+            time.sleep(random.uniform(1, 3))
             _release_hold()
             return
+        consecutive_clear = 0
         print(f"   …still limited (refresh {attempt}); waiting ~10s")
         time.sleep(random.uniform(8, 14))
     print("   ⚠️  Still limited after many refreshes — releasing anyway to retry.")
