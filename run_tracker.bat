@@ -18,6 +18,14 @@ REM zone - France plus the 9 countries buyers reach you from. FR-only tracking w
 REM missing ~45%% of the listings actually visible in this zone.
 set VINTED_DOMAINS=fr,be,lu,nl,de,at,es,pt,it,ie
 
+REM Data reliability (2026-08-22): verify a disappearance against the real Vinted page before
+REM counting it as a sale. ON by default - no extra cost (just item-page loads, same as
+REM publish-time enrichment), and it fixed a ~10x sale overcount found on live data.
+set VINTED_VERIFY_SOLD=1
+REM Opportunity ranking + alerts (Phase 6): pure computation on data already collected, no
+REM extra cost. ON by default so opportunities_<slug>.csv builds up from the first run.
+set VINTED_DISCOVER=1
+
 REM ---- Optional AI features (OFF by default - each spends your own Anthropic budget) ----
 REM Uncomment to enable during continuous collection. Cost scales with NEW distinct products;
 REM VINTED_DEDUP cuts it further by identifying each product once and reusing across sellers.
@@ -25,7 +33,6 @@ REM set VINTED_VISION=1
 REM set VINTED_VISION_PROVIDER=anthropic
 REM set VINTED_DEDUP=1
 REM set VINTED_REFERENCE=1
-REM set VINTED_DISCOVER=1
 
 REM Confirm the logged-in debug-Chrome is up; if not, stop (don't corrupt anything).
 powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3; exit 0 } catch { exit 1 }"
