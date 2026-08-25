@@ -46,12 +46,22 @@ REM set VINTED_VISION_PROVIDER=anthropic
 REM set VINTED_DEDUP=1
 REM set VINTED_REFERENCE=1
 
-REM Confirm the logged-in debug-Chrome is up; if not, stop (don't corrupt anything).
+REM Confirm the logged-in debug-Chrome is up. If it is not - live-tested 2026-08-25: Chrome can
+REM silently die during a long unattended run, which used to fail the ENTIRE rest of the watch-
+REM list with no loud warning - try ONE relaunch on the same profile before giving up. A clean
+REM relaunch (no taskkill of other Chrome windows) preserves the saved login: verified live.
 powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3; exit 0 } catch { exit 1 }"
 if errorlevel 1 (
-  echo [%date% %time%] ERROR: Chrome is not running with the debugging port.
-  echo    Run start_scraper.bat, log into Vinted, and LEAVE Chrome open. Then retry.
-  exit /b 1
+  echo [%date% %time%] Chrome debug port unreachable - attempting one relaunch...
+  start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%~dp0vinted_profile" "https://www.vinted.fr"
+  timeout /t 12 >nul
+  powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3; exit 0 } catch { exit 1 }"
+  if errorlevel 1 (
+    echo [%date% %time%] ERROR: Chrome still not running with the debugging port after a relaunch attempt.
+    echo    Run start_scraper.bat, log into Vinted, and LEAVE Chrome open. Then retry.
+    exit /b 1
+  )
+  echo [%date% %time%] Chrome relaunched successfully - continuing.
 )
 
 if not exist tracked_keywords.txt (
@@ -76,14 +86,14 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.txt") do (
       set "cat_name=%%b"
     )
     if "!cat_name!"=="" set "cat_name=category !cat_id!"
-    echo [%date% %time%] sweeping category: !cat_id! ^(!cat_name!^)
+    echo [!date! !time!] sweeping category: !cat_id! ^(!cat_name!^)
     set "VINTED_CATALOG_ID=!cat_id!"
     set "VINTED_CATEGORY_NAME=!cat_name!"
     python track_sales.py >> "%LOGFILE%" 2>&1
     set "VINTED_CATALOG_ID="
     set "VINTED_CATEGORY_NAME="
   ) else (
-    echo [%date% %time%] tracking: !kw!
+    echo [!date! !time!] tracking: !kw!
     python track_sales.py "!kw!" >> "%LOGFILE%" 2>&1
   )
   timeout /t 30 >nul

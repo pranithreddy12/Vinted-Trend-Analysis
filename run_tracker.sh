@@ -39,11 +39,21 @@ unset VINTED_VISION VINTED_VISION_PROVIDER VINTED_DEDUP VINTED_REFERENCE
 # export VINTED_DEDUP=1                     # reuse each product across sellers — big AI-cost cut
 # export VINTED_REFERENCE=1                 # reference lookup for generic items (Stage B)
 
-# Confirm the logged-in debug-Chrome is up; if not, stop (don't corrupt anything).
+# Confirm the logged-in debug-Chrome is up. If it is not — live-tested 2026-08-25: Chrome can
+# silently die during a long unattended run, which used to fail the ENTIRE rest of the watch-
+# list with no loud warning — try ONE relaunch on the same profile before giving up. A clean
+# relaunch (no pkill of other Chrome windows) preserves the saved login: verified live.
 if ! curl -s -m 3 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
-  echo "[$(date)] ERROR: Chrome is not running with the debugging port."
-  echo "   Run start_scraper.sh, log into Vinted, and LEAVE Chrome open. Then retry."
-  exit 1
+  echo "[$(date)] Chrome debug port unreachable — attempting one relaunch..."
+  CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  "$CHROME" --remote-debugging-port=9222 --user-data-dir="$SCRIPT_DIR/vinted_profile" "https://www.vinted.fr" >/dev/null 2>&1 &
+  sleep 12
+  if ! curl -s -m 3 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
+    echo "[$(date)] ERROR: Chrome still not running with the debugging port after a relaunch attempt."
+    echo "   Run start_scraper.sh, log into Vinted, and LEAVE Chrome open. Then retry."
+    exit 1
+  fi
+  echo "[$(date)] Chrome relaunched successfully — continuing."
 fi
 
 KEYWORDS_FILE="$SCRIPT_DIR/tracked_keywords.txt"
