@@ -13,6 +13,11 @@ cd /d "%~dp0"
 
 set VINTED_AUTOMATED=1
 set VINTED_TRACK_WORKERS=2
+REM Unbuffered stdout/stderr: without this, Python fully buffers output when it is not
+REM attached to a live terminal (i.e. always, under Task Scheduler / redirected to a log
+REM file), so nothing appears in LOGFILE until the process exits - making a slow, healthy
+REM run look identical to a hung one. This flushes every print immediately.
+set PYTHONUNBUFFERED=1
 REM Cross-border tracking (Phase 4 delivery, 2026-07-08): your Vinted account's shipping
 REM zone - France plus the 9 countries buyers reach you from. FR-only tracking was
 REM missing ~45%% of the listings actually visible in this zone.
@@ -47,6 +52,11 @@ if not exist tracked_keywords.txt (
   exit /b 1
 )
 
+if not exist logs mkdir logs
+set LOGFILE=logs\run_%date:~-4,4%-%date:~-10,2%-%date:~-7,2%_%time:~0,2%%time:~3,2%.log
+set LOGFILE=%LOGFILE: =0%
+
+echo [%date% %time%] === automated tracking run starting === > "%LOGFILE%"
 echo [%date% %time%] === automated tracking run starting ===
 setlocal enabledelayedexpansion
 for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.txt") do (
@@ -62,14 +72,15 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.txt") do (
     echo [%date% %time%] sweeping category: !cat_id! ^(!cat_name!^)
     set "VINTED_CATALOG_ID=!cat_id!"
     set "VINTED_CATEGORY_NAME=!cat_name!"
-    python track_sales.py
+    python track_sales.py >> "%LOGFILE%" 2>&1
     set "VINTED_CATALOG_ID="
     set "VINTED_CATEGORY_NAME="
   ) else (
     echo [%date% %time%] tracking: !kw!
-    python track_sales.py "!kw!"
+    python track_sales.py "!kw!" >> "%LOGFILE%" 2>&1
   )
   timeout /t 30 >nul
 )
 endlocal
+echo [%date% %time%] === run complete === >> "%LOGFILE%"
 echo [%date% %time%] === run complete ===
