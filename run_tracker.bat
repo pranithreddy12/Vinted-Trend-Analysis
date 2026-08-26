@@ -13,6 +13,12 @@ cd /d "%~dp0"
 
 set VINTED_AUTOMATED=1
 set VINTED_TRACK_WORKERS=2
+REM Cap per-run item-page work so ONE product with a big/first-time catalog can't turn a
+REM scheduled 6h-cadence run into a many-hour marathon (live-observed: a 1,551-item first-time
+REM enrichment alone ran well over an hour). Uncapped work resumes automatically on the NEXT
+REM run - nothing is lost, it just spreads across cycles instead of blocking everything after it.
+set VINTED_MAX_ENRICH=300
+set VINTED_MAX_VERIFY=300
 REM Unbuffered stdout/stderr: without this, Python fully buffers output when it is not
 REM attached to a live terminal (i.e. always, under Task Scheduler / redirected to a log
 REM file), so nothing appears in LOGFILE until the process exits - making a slow, healthy

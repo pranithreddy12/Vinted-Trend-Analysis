@@ -1219,9 +1219,17 @@ def _verify_sold_worker(item_id: str):
 def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2) -> dict:
     """Verify the real status of newly-disappeared listings and reclassify them:
     sold → confirmed sale; removed → excluded; active → reverted; else left unverified.
-    Only runs when VINTED_VERIFY_SOLD=1. Returns a small tally for the report."""
+    Only runs when VINTED_VERIFY_SOLD=1. Returns a small tally for the report.
+
+    Cap per run with VINTED_MAX_VERIFY (mirrors enrich_publish_times' VINTED_MAX_ENRICH) — a
+    product with a lot of history could otherwise verify thousands of listings in one run,
+    turning a scheduled 6h-cadence job into a many-hour marathon. Unverified ids simply resolve
+    on the NEXT run (they stay 'disappeared', never counted as sold in the meantime — safe)."""
     if not ids:
         return {}
+    cap = os.environ.get("VINTED_MAX_VERIFY")
+    if cap:
+        ids = ids[: int(cap)]
     workers = int(os.environ.get("VINTED_TRACK_WORKERS", workers))
     print(f"\n🔎 Verifying sold status of {len(ids)} disappeared listings via {workers} tabs "
           f"(a disappearance is not a sale until Vinted confirms it)...")

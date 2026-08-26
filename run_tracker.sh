@@ -14,6 +14,12 @@ cd "$SCRIPT_DIR" || exit 1
 
 export VINTED_AUTOMATED=1        # never block on a login prompt
 export VINTED_TRACK_WORKERS=2    # gentle — avoids Vinted's rate limiting
+# Cap per-run item-page work so ONE product with a big/first-time catalog can't turn a
+# scheduled 6h-cadence run into a many-hour marathon (live-observed: a 1,551-item first-time
+# enrichment alone ran well over an hour). Uncapped work resumes automatically on the NEXT
+# run — nothing is lost, it just spreads across cycles instead of blocking everything after it.
+export VINTED_MAX_ENRICH=300
+export VINTED_MAX_VERIFY=300
 # Cross-border tracking (Phase 4 delivery, 2026-07-08): your Vinted account's shipping
 # zone — France plus the 9 countries buyers reach you from. FR-only tracking was
 # missing ~45% of the listings actually visible in this zone. Remove domains here if
