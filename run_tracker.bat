@@ -78,23 +78,48 @@ echo [%date% %time%] === automated tracking run starting ===
 setlocal enabledelayedexpansion
 for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.txt") do (
   set "kw=%%k"
-  if "!kw:~0,4!"=="cat:" (
-    REM Seedless category sweep (Phase 6 Layer 1): "cat:<id> <label>" — whole category, no keyword.
-    set "rest=!kw:~4!"
-    for /f "tokens=1*" %%a in ("!rest!") do (
-      set "cat_id=%%a"
-      set "cat_name=%%b"
+
+  REM Re-check Chrome before EVERY product, not just once at the top. Live-observed
+  REM 2026-08-25/26: Chrome died/was closed partway through a 14-product run, and every
+  REM remaining product failed instantly with no recovery attempt for the rest of the run
+  REM (only the top-of-script check existed). Same one-relaunch-then-give-up logic, but
+  REM per-iteration so a single closure/crash costs at most one product, not the whole rest
+  REM of the batch — and on failure we SKIP this product rather than aborting the run,
+  REM since Chrome may come back (or a later relaunch may succeed) for the next one.
+  set "chrome_ok=1"
+  powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3; exit 0 } catch { exit 1 }"
+  if errorlevel 1 (
+    echo [!date! !time!] Chrome debug port unreachable before "!kw!" - attempting one relaunch...
+    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%~dp0vinted_profile" "https://www.vinted.fr"
+    timeout /t 12 >nul
+    powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3; exit 0 } catch { exit 1 }"
+    if errorlevel 1 (
+      echo [!date! !time!] Chrome still unreachable - skipping "!kw!" this run.
+      set "chrome_ok=0"
+    ) else (
+      echo [!date! !time!] Chrome relaunched successfully - continuing.
     )
-    if "!cat_name!"=="" set "cat_name=category !cat_id!"
-    echo [!date! !time!] sweeping category: !cat_id! ^(!cat_name!^)
-    set "VINTED_CATALOG_ID=!cat_id!"
-    set "VINTED_CATEGORY_NAME=!cat_name!"
-    python track_sales.py >> "%LOGFILE%" 2>&1
-    set "VINTED_CATALOG_ID="
-    set "VINTED_CATEGORY_NAME="
-  ) else (
-    echo [!date! !time!] tracking: !kw!
-    python track_sales.py "!kw!" >> "%LOGFILE%" 2>&1
+  )
+
+  if "!chrome_ok!"=="1" (
+    if "!kw:~0,4!"=="cat:" (
+      REM Seedless category sweep (Phase 6 Layer 1): "cat:<id> <label>" — whole category, no keyword.
+      set "rest=!kw:~4!"
+      for /f "tokens=1*" %%a in ("!rest!") do (
+        set "cat_id=%%a"
+        set "cat_name=%%b"
+      )
+      if "!cat_name!"=="" set "cat_name=category !cat_id!"
+      echo [!date! !time!] sweeping category: !cat_id! ^(!cat_name!^)
+      set "VINTED_CATALOG_ID=!cat_id!"
+      set "VINTED_CATEGORY_NAME=!cat_name!"
+      python track_sales.py >> "%LOGFILE%" 2>&1
+      set "VINTED_CATALOG_ID="
+      set "VINTED_CATEGORY_NAME="
+    ) else (
+      echo [!date! !time!] tracking: !kw!
+      python track_sales.py "!kw!" >> "%LOGFILE%" 2>&1
+    )
   )
   timeout /t 30 >nul
 )

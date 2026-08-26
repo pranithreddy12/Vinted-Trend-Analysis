@@ -39,21 +39,29 @@ unset VINTED_VISION VINTED_VISION_PROVIDER VINTED_DEDUP VINTED_REFERENCE
 # export VINTED_DEDUP=1                     # reuse each product across sellers — big AI-cost cut
 # export VINTED_REFERENCE=1                 # reference lookup for generic items (Stage B)
 
-# Confirm the logged-in debug-Chrome is up. If it is not — live-tested 2026-08-25: Chrome can
-# silently die during a long unattended run, which used to fail the ENTIRE rest of the watch-
-# list with no loud warning — try ONE relaunch on the same profile before giving up. A clean
-# relaunch (no pkill of other Chrome windows) preserves the saved login: verified live.
-if ! curl -s -m 3 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
+# Confirm the logged-in debug-Chrome is up. If it is not — live-tested 2026-08-25/26: Chrome
+# can die or get closed (even by accident) partway through a run, and without a per-product
+# recheck every remaining product failed instantly with no recovery attempt for the rest of
+# the run. Try ONE relaunch on the same profile before giving up (a clean relaunch — no pkill
+# of other Chrome windows — preserves the saved login: verified live). Returns 0 if Chrome is
+# up (after relaunching if needed), 1 if it's still unreachable.
+ensure_chrome() {
+  curl -s -m 3 http://127.0.0.1:9222/json/version >/dev/null 2>&1 && return 0
   echo "[$(date)] Chrome debug port unreachable — attempting one relaunch..."
   CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
   "$CHROME" --remote-debugging-port=9222 --user-data-dir="$SCRIPT_DIR/vinted_profile" "https://www.vinted.fr" >/dev/null 2>&1 &
   sleep 12
-  if ! curl -s -m 3 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
-    echo "[$(date)] ERROR: Chrome still not running with the debugging port after a relaunch attempt."
-    echo "   Run start_scraper.sh, log into Vinted, and LEAVE Chrome open. Then retry."
-    exit 1
+  if curl -s -m 3 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
+    echo "[$(date)] Chrome relaunched successfully — continuing."
+    return 0
   fi
-  echo "[$(date)] Chrome relaunched successfully — continuing."
+  return 1
+}
+
+if ! ensure_chrome; then
+  echo "[$(date)] ERROR: Chrome still not running with the debugging port after a relaunch attempt."
+  echo "   Run start_scraper.sh, log into Vinted, and LEAVE Chrome open. Then retry."
+  exit 1
 fi
 
 KEYWORDS_FILE="$SCRIPT_DIR/tracked_keywords.txt"
@@ -67,6 +75,15 @@ while IFS= read -r kw || [ -n "$kw" ]; do
   kw="$(echo "$kw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
   [ -z "$kw" ] && continue
   case "$kw" in \#*) continue ;; esac
+
+  # Re-check Chrome before EVERY product, not just once at the top (see ensure_chrome above) —
+  # a single closure/crash now costs at most one product instead of the whole rest of the run.
+  if ! ensure_chrome; then
+    echo "[$(date)] Chrome still unreachable — skipping \"$kw\" this run."
+    sleep 30
+    continue
+  fi
+
   if [ "${kw#cat:}" != "$kw" ]; then
     # Seedless category sweep (Phase 6 Layer 1): "cat:<id> <label>" collects a WHOLE category
     # with no search keyword, feeding the same tracking/history pipeline.
