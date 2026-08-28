@@ -146,15 +146,35 @@ def connect(p):
     return browser, context
 
 
+def _page_is_alive(page) -> bool:
+    """A crashed tab (e.g. Chrome's 'Aw, Snap! Out of Memory') stays in context.pages and can
+    still report its last-known .url, so a URL-based reuse check alone hands back a dead page —
+    every operation on it then fails or hangs indefinitely. A crashed renderer usually can't be
+    recovered with page.reload() either, so this is just a liveness probe; the caller discards
+    a dead page and opens a fresh one rather than trying to resurrect it."""
+    try:
+        page.evaluate("1", timeout=5000)
+        return True
+    except Exception:
+        return False
+
+
 def get_or_create_page(context, url: str | None = None):
     """
-    Reuse an existing Vinted tab if possible.
-    If a url is given and no vinted tab exists, open one.
+    Reuse an existing Vinted tab if possible — but only if it's actually still alive (see
+    _page_is_alive). A crashed tab is closed and replaced rather than reused.
+    If a url is given and no usable vinted tab exists, open one.
     """
     page = next(
         (pg for pg in context.pages if "vinted" in pg.url.lower()),
         None,
     )
+    if page and not _page_is_alive(page):
+        try:
+            page.close()
+        except Exception:
+            pass
+        page = None
     if not page:
         page = context.new_page()
         if url:
