@@ -77,6 +77,14 @@ if [ ! -f "$KEYWORDS_FILE" ]; then
 fi
 
 echo "[$(date)] === automated tracking run starting ==="
+
+# A full run rarely finishes one cycle (heavy rate-limiting), so starting from line 1 every
+# time meant the SAME front products always completed while the back ones never got a turn —
+# starved indefinitely. rotate_watchlist.py starts this run wherever the LAST run left off, so
+# every product gets priority at least once every 2 cycles regardless of how far any one
+# cycle actually gets.
+python3 rotate_watchlist.py "$KEYWORDS_FILE" > "$SCRIPT_DIR/tracked_keywords.rotated.txt"
+
 while IFS= read -r kw || [ -n "$kw" ]; do
   kw="$(echo "$kw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
   [ -z "$kw" ] && continue
@@ -104,5 +112,5 @@ while IFS= read -r kw || [ -n "$kw" ]; do
     python3 track_sales.py "$kw"
   fi
   sleep 30
-done < "$KEYWORDS_FILE"
+done < "$SCRIPT_DIR/tracked_keywords.rotated.txt"
 echo "[$(date)] === run complete ==="

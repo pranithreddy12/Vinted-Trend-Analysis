@@ -81,8 +81,16 @@ set LOGFILE=%LOGFILE: =0%
 
 echo [%date% %time%] === automated tracking run starting === > "%LOGFILE%"
 echo [%date% %time%] === automated tracking run starting ===
+
+REM A full run rarely finishes one cycle (heavy rate-limiting), so starting from line 1 every
+REM time meant the SAME front products always completed while the back ones never got a turn -
+REM starved indefinitely. rotate_watchlist.py starts this run wherever the LAST run left off,
+REM so every product gets priority at least once every 2 cycles regardless of how far any one
+REM cycle actually gets.
+python rotate_watchlist.py tracked_keywords.txt > tracked_keywords.rotated.txt
+
 setlocal enabledelayedexpansion
-for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.txt") do (
+for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt") do (
   set "kw=%%k"
 
   REM Re-check Chrome before EVERY product, not just once at the top. Live-observed
