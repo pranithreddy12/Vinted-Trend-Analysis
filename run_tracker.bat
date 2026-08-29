@@ -11,6 +11,13 @@ REM open on the dedicated machine. See AUTOMATION.md.
 chcp 65001 >nul
 cd /d "%~dp0"
 
+REM Bare "python" can resolve to a DIFFERENT install than the one with the project's deps
+REM installed (live-observed 2026-08-29: PATH put a numpy-less Python 3.14 ahead of the 3.11
+REM install everything was tested against, silently degrading numpy-dependent features).
+REM Pin to the known-good install; fall back to PATH resolution if it's not on this machine.
+set PYTHON=C:\Users\prani\AppData\Local\Programs\Python\Python311\python.exe
+if not exist "%PYTHON%" set PYTHON=python
+
 set VINTED_AUTOMATED=1
 set VINTED_TRACK_WORKERS=2
 REM Cap per-run item-page work so ONE product with a big/first-time catalog can't turn a
@@ -87,7 +94,7 @@ REM time meant the SAME front products always completed while the back ones neve
 REM starved indefinitely. rotate_watchlist.py starts this run wherever the LAST run left off,
 REM so every product gets priority at least once every 2 cycles regardless of how far any one
 REM cycle actually gets.
-python rotate_watchlist.py tracked_keywords.txt > tracked_keywords.rotated.txt
+%PYTHON% rotate_watchlist.py tracked_keywords.txt > tracked_keywords.rotated.txt
 
 setlocal enabledelayedexpansion
 for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt") do (
@@ -127,12 +134,12 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt")
       echo [!date! !time!] sweeping category: !cat_id! ^(!cat_name!^)
       set "VINTED_CATALOG_ID=!cat_id!"
       set "VINTED_CATEGORY_NAME=!cat_name!"
-      python track_sales.py >> "%LOGFILE%" 2>&1
+      %PYTHON% track_sales.py >> "%LOGFILE%" 2>&1
       set "VINTED_CATALOG_ID="
       set "VINTED_CATEGORY_NAME="
     ) else (
       echo [!date! !time!] tracking: !kw!
-      python track_sales.py "!kw!" >> "%LOGFILE%" 2>&1
+      %PYTHON% track_sales.py "!kw!" >> "%LOGFILE%" 2>&1
     )
   )
   timeout /t 30 >nul

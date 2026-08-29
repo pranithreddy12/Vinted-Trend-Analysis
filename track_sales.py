@@ -1406,7 +1406,25 @@ def main():
                 f"AUTOMATION.md). Skipping this run. [{type(e).__name__}]"
             )
             sys.exit(4)
-        page = fr.get_or_create_page(context, "https://www.vinted.fr")
+        # Live-observed 2026-08-29: a transient DNS blip (net::ERR_NAME_NOT_RESOLVED) on this
+        # very first real navigation crashed with an unhandled traceback, which then repeated
+        # identically for every remaining product in the batch (each one hits this same line
+        # first) — one brief network hiccup killed the rest of the whole run. The Chrome-health
+        # check above only verifies the LOCAL debug port (127.0.0.1), never real internet
+        # reachability, so it can't catch this class of failure. Retry once after a short pause
+        # — DNS blips are typically transient — then fail this ONE product cleanly (matching the
+        # existing "could not connect" exit path) rather than crash uncaught.
+        try:
+            page = fr.get_or_create_page(context, "https://www.vinted.fr")
+        except Exception as e:
+            print(f"⚠️  Could not reach vinted.fr ({type(e).__name__}) — retrying in 15s...")
+            time.sleep(15)
+            try:
+                page = fr.get_or_create_page(context, "https://www.vinted.fr")
+            except Exception as e2:
+                print(f"⚠️  Still could not reach vinted.fr. Skipping this run. "
+                      f"[{type(e2).__name__}]")
+                sys.exit(4)
         time.sleep(3)
         if page.query_selector("[data-testid='header--login-button']"):
             if os.environ.get("VINTED_AUTOMATED"):
