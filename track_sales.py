@@ -53,7 +53,8 @@ TRACK_FIELDS = [
     "hours_tracked",   # first_seen → disappearance (what we directly observed)
     "brand",           # structured attribute (from item page)
     "color",           # structured attribute (from item page)
-    "variant",         # brand + capacity + colour signature for grouping
+    "size",            # catalog size_title — mandatory on clothing, empty on bottles
+    "variant",         # brand + capacity/size + colour signature for grouping
     "offers",          # buyer offers on this listing (early-demand signal, from item page)
     "offers_seen_at",  # when the offers count was captured (offers are a moving snapshot)
 ]
@@ -113,15 +114,21 @@ def update_tracking(tracking: dict, current_items: list, now: datetime) -> tuple
         current_ids.add(iid)
         title = item.get("title") or ""
         brand_title = item.get("brand_title") or ""
+        # Mandatory on clothing, empty on bottles — free, straight from the catalog feed
+        # (no item-page load needed), unlike colour which needs enrichment.
+        size_title = item.get("size_title") or ""
         if iid in tracking:
             row = tracking[iid]
             row["last_seen"] = now_str
-            # Backfill brand/variant from the catalog (free — no page load needed).
+            # Backfill brand/size/variant from the catalog (free — no page load needed).
             if brand_title and not row.get("brand"):
                 row["brand"] = brand_title
+            if size_title and not row.get("size"):
+                row["size"] = size_title
             if not row.get("variant"):
                 row["variant"] = build_variant(
-                    row.get("title", ""), row.get("brand", ""), row.get("color", "")
+                    row.get("title", ""), row.get("brand", ""), row.get("color", ""),
+                    row.get("size", ""),
                 )
             # Present in this run: clear the absence counter (see DISAPPEARANCE_RUNS).
             row["missed_runs"] = 0
@@ -150,7 +157,8 @@ def update_tracking(tracking: dict, current_items: list, now: datetime) -> tuple
                 "hours_tracked": "",
                 "brand": brand_title,
                 "color": "",
-                "variant": build_variant(title, brand_title, ""),
+                "size": size_title,
+                "variant": build_variant(title, brand_title, "", size_title),
             }
             newly += 1
 
@@ -444,19 +452,39 @@ def product_display_name(model: str, base: str, brand: str = "Stanley") -> str:
     return " ".join(bits)
 
 
-def build_variant(title: str, brand: str, color: str) -> str:
-    """
-    Build the BASE variant key = canonical capacity + colour, e.g. "40oz pink".
-    Capacity is unit-normalised (40oz ≡ 1.18L ≡ 1.2L → "40oz") so the same size
-    written different ways doesn't fragment into separate variants. Colour prefers
-    the structured page attribute, falling back to a colour word in the title.
-    Returns "" if capacity+colour can't both be determined (the pair is the minimum
-    for a real variant).
+# Vinted forces a size on every clothing listing, but non-clothing items come back as a
+# meaningless placeholder — don't build a variant key out of those.
+_NOOP_SIZES = {"", "one size", "onesize", "one-size", "one size fits all", "unique",
+               "taille unique", "taglia unica", "talla única", "única", "einheitsgröße",
+               "os", "u", "n/a"}
 
-    The product LINE (Quencher / Flip Straw / …) is layered on in variant_analysis,
-    not here, because assigning it correctly needs the global picture — a bare
-    "Stanley cup 40oz" title names no line, so it's imputed to the dominant line at
-    that size+colour rather than fragmenting off on its own.
+
+def _real_size(size: str) -> str:
+    s = (size or "").strip()
+    return "" if s.lower() in _NOOP_SIZES else s
+
+
+def build_variant(title: str, brand: str, color: str, size: str = "") -> str:
+    """
+    Build the BASE variant key identifying a sellable product, e.g. "40oz pink".
+
+    Live-observed 2026-08-29: this required BOTH capacity and colour, so it returned "" for
+    every clothing/plush listing (no capacity concept) — 7 of 14 watch-list products (Ralph
+    Lauren + all 6 Jellycat) produced ZERO variants no matter how much history accumulated,
+    since there was never a key to group by, not a data problem. Degrades gracefully instead:
+      1. capacity + colour  (bottles — UNCHANGED, exact prior behaviour/priority)
+      2. size + colour      (clothing — `size` is the catalog's mandatory size_title)
+      3. colour alone       (plush/generic with no size or capacity concept, e.g. Jellycat
+                             characters that only vary by colour)
+      4. "" only when there's truly no colour at all — the genuinely ungroupable case.
+    Capacity is unit-normalised (40oz ≡ 1.18L ≡ 1.2L → "40oz") so the same size written
+    different ways doesn't fragment into separate variants. Colour prefers the structured
+    page attribute, falling back to a colour word in the title.
+
+    The product LINE (Quencher / Flip Straw / …) is layered on in variant_analysis, not
+    here, because assigning it correctly needs the global picture — a bare "Stanley cup
+    40oz" title names no line, so it's imputed to the dominant line at that size+colour
+    rather than fragmenting off on its own.
     """
     toks = fr._tokenize((title or "").lower())
     cap = ""
@@ -468,9 +496,12 @@ def build_variant(title: str, brand: str, color: str) -> str:
     if not col:
         # No structured colour — look for a colour word in the title.
         col = next((COLOR_BUCKETS[t] for t in toks if t in COLOR_BUCKETS), "")
-    if not (cap and col):
-        return ""
-    return f"{cap} {col}"
+    if cap and col:
+        return f"{cap} {col}"
+    real_size = _real_size(size)
+    if real_size and col:
+        return f"{real_size} {col}"
+    return col
 
 
 def compute_variant_opportunity(
@@ -782,7 +813,7 @@ def variant_analysis(
     # Straw 40oz Pink), the explicitly-named minority still splits off correctly.
     model_votes = {}
     for r in tracking.values():
-        base = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""))
+        base = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""), r.get("size", ""))
         if not base:
             continue
         m = detect_model(r.get("title", ""))
@@ -794,7 +825,7 @@ def variant_analysis(
 
     groups = {}
     for r in tracking.values():
-        base = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""))
+        base = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""), r.get("size", ""))
         if base:
             model = detect_model(r.get("title", "")) or dominant_model.get(base, "")
             v = f"{model.lower()} {base}".strip() if model else base
@@ -1147,7 +1178,8 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
                     row["offers"] = info["offers"]
                     row["offers_seen_at"] = _fmt(datetime.now(timezone.utc))
                 row["variant"] = build_variant(
-                    row.get("title", ""), row.get("brand", ""), row.get("color", "")
+                    row.get("title", ""), row.get("brand", ""), row.get("color", ""),
+                    row.get("size", ""),
                 )
             if done % 25 == 0:
                 print(f"   ...{done}/{len(todo)} ({captured} captured)")
@@ -1587,5 +1619,25 @@ def main():
             print(f"⚠️  opportunity discovery skipped: {type(e).__name__}: {e}")
 
 
+def _demo() -> None:
+    """Self-check for build_variant's graceful degradation (no network). Regression: this used
+    to require capacity+colour, so clothing/plush (no capacity concept) always got "" — 7 of 14
+    real watch-list products produced zero variants no matter how much history accumulated."""
+    # bottle: capacity+colour path is UNCHANGED from the original behaviour/priority.
+    assert build_variant("Stanley Quencher 40oz", "Stanley", "rose", "") == "40oz pink"
+    # clothing: no capacity, but a real size + colour -> forms a key.
+    assert build_variant("Ralph Lauren Polo", "Ralph Lauren", "Blanc", "XXL") == "XXL white"
+    # a no-op size (Vinted's "one size" placeholder) must NOT be used as a key component.
+    assert build_variant("Ralph Lauren cap", "Ralph Lauren", "noir", "Taille unique") == "black"
+    # plush/generic: no capacity, no size, colour alone still forms a key.
+    assert build_variant("Jellycat Dragon Blue", "Jellycat", "blue", "") == "blue"
+    # truly nothing usable -> still empty, same as before.
+    assert build_variant("mystery item", "", "", "") == ""
+    print("track_sales self-check OK: build_variant degrades gracefully for non-bottle products")
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
+        _demo()
+    else:
+        main()
