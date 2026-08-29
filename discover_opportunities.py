@@ -97,7 +97,14 @@ def rank_opportunities(variants: list, slug: str = "", top_n: int = 20,
         pts = series.get(v.get("variant", ""), [])
         mom = momentum(pts)
         out = dict(v)
-        out["momentum_pct"] = round(mom * 100)
+        # Cap the DISPLAYED percentage. Live-observed: a variant with two near-zero snapshots
+        # then its first real sale computes a mathematically valid but absurd slope ("0, 0, 8.7"
+        # -> +300%) because dividing by a near-zero mean amplifies tiny absolute moves into huge
+        # percentages. That's not real week-over-week growth, it's noise from a small sample
+        # crossing zero - showing "+300%" to the client would read as explosive demand when it's
+        # really just the first data point after a near-empty ramp-up. discovery_score's boost
+        # was already clamped to +/-100%; the number we PRINT needed the same clamp.
+        out["momentum_pct"] = round(max(-100.0, min(100.0, mom * 100)))
         out["history_points"] = len(pts)
         out["discovery_score"] = discovery_score(v, mom)
         out["reason"] = _reason(out, out["momentum_pct"])
@@ -192,6 +199,22 @@ def _demo() -> None:
     assert momentum([("d1", 30), ("d2", 20), ("d3", 10)]) < 0, "declining series"
     assert momentum([("d1", 20), ("d2", 20)]) == 0.0, "flat series"
     assert momentum([("d1", 20)]) == 0.0, "single point = unknown"
+    # REGRESSION: live-observed "0, 0, 8.7" series computed +300% momentum — mathematically
+    # valid (dividing by a near-zero mean amplifies a tiny move) but absurd to SHOW a client as
+    # "rising +300%" when it's really just the first sale after a near-empty ramp-up. The raw
+    # momentum() value can still be large (only the displayed % is capped, in rank_opportunities);
+    # this asserts the underlying pathology is real so the cap has something to guard against.
+    assert momentum([("d1", 0.0), ("d2", 0.0), ("d3", 8.7)]) > 2.0, "near-zero-baseline pathology"
+    _orig_series = snapshot_series
+    globals()["snapshot_series"] = lambda slug, max_days=21: {
+        "x": [("d1", 0.0), ("d2", 0.0), ("d3", 8.7)]}
+    try:
+        ranked = rank_opportunities(
+            [{"variant": "x", "score": 10, "est_sales_30d": 8.7}], slug="whatever")
+        assert ranked[0]["momentum_pct"] == 100, \
+            f"display must be capped at 100, got {ranked[0]['momentum_pct']}"
+    finally:
+        globals()["snapshot_series"] = _orig_series
     v = {"score": 50}
     assert discovery_score(v, 0.5) > discovery_score(v, 0.0), "rising must out-score flat"
     assert discovery_score({"score": 100}, 0.0) == 70, "flat base weight"
