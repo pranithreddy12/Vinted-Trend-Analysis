@@ -248,7 +248,14 @@ def fetch_catalog_via_requests(
         }
 
         if catalog_id:
-            params["catalog[]"] = catalog_id
+            # "catalog[]" is silently IGNORED by this endpoint (200 OK, unfiltered results) —
+            # confirmed live 2026-08-29 by replaying the exact request from an authenticated
+            # browser tab. The real parameter name, verified against Vinted's own network
+            # traffic, is "catalog_ids". This was the seedless category sweep's actual
+            # filter the whole time; it silently returned unfiltered results instead of
+            # erroring, so this bug had never surfaced despite an earlier "verified live" check
+            # (which only confirmed items came back, not that they were category-filtered).
+            params["catalog_ids"] = catalog_id
 
         headers = {
             "User-Agent": (
