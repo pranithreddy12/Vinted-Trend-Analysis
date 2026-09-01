@@ -35,6 +35,7 @@ jellycat croissant
 jellycat monkey
 jellycat fancy carp
 
-# ---- Autonomous category discovery (Phase 6) — add once you choose categories ----
+# ---- Autonomous category discovery (Phase 6) — client-chosen 2026-08-29 ----
 # cat:<id> <label>    (find <id> in the Vinted URL when browsing a category: catalog[]=<id>)
-# cat:1904 home & living
+cat:1918 home
+cat:1904 women
