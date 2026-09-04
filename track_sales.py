@@ -505,7 +505,6 @@ def build_variant(title: str, brand: str, color: str, size: str = "") -> str:
 
 
 def compute_variant_opportunity(
-    competition: int,
     est_sales_30d: float,
     median_days,
     offers_total: int = 0,
@@ -514,22 +513,22 @@ def compute_variant_opportunity(
     """
     Score a variant 0–100 from concrete signals the client cares about.
 
-    Weighting (client-confirmed priority order, 2026-07-08):
-      1. Proven monthly sales volume  (max 45, the lead signal)
-      2. Sales velocity / liquidity   (max 25)
-      3. Buyer demand signals (offers)(max 18) — early demand, leads sales in time
-      4. Competition level            (max 12, tie-breaker only)
-    Volume still clearly leads so a high-volume proven seller never loses to a tiny
-    fast niche; offers were added as the #3 factor so a product that's heating up
-    (buyers making offers) surfaces before its sales history has caught up.
+    Weighting (client spec, 2026-09-04):
+      1. Verified monthly sales volume (max 45, the lead signal) — real confirmed sales
+         in the trailing 30 days, not an extrapolated rate.
+      2. Sales velocity / liquidity    (max 25) — full marks for selling within 72h.
+      3. Buyer demand signals (offers) (max 18) — early demand, leads sales in time.
+      4. Competition is NOT scored. Client: "a good, high-selling product can still face
+         significant competition" — it must not move the result, so it's surfaced
+         separately (competition_level) as information only, never blended into the score.
 
     offers_measured distinguishes "measured 0 offers" (real weak early demand → the
     offers component is a genuine 0) from "offers not captured yet for this variant"
-    (unknown → we score the other three factors renormalised to 100 instead of
+    (unknown → we score the other two factors renormalised to 100 instead of
     penalising it with a phantom 0). Offer coverage builds up as item pages get
     enriched over successive runs, so this avoids a first-run dip in every score.
     """
-    # Sales volume — estimated sales per 30 days (max 45, the lead signal)
+    # Sales volume — verified confirmed sales in the trailing 30 days (max 45, the lead signal)
     if est_sales_30d >= 30:
         vol = 45
     elif est_sales_30d >= 15:
@@ -543,17 +542,15 @@ def compute_variant_opportunity(
     else:
         vol = 0
 
-    # Liquidity — faster sale = better (max 25)
+    # Liquidity — full marks for selling within 72h, the client's own cutoff (max 25)
     if median_days is None:
         liq = 0
-    elif median_days <= 1:
-        liq = 25
     elif median_days <= 3:
-        liq = 20
+        liq = 25
     elif median_days <= 7:
-        liq = 13
+        liq = 15
     elif median_days <= 14:
-        liq = 7
+        liq = 8
     else:
         liq = 3
 
@@ -572,27 +569,13 @@ def compute_variant_opportunity(
     else:
         off = 0
 
-    # Competition — fewer active listings = more room (max 12); 0 = no market
-    if competition == 0:
-        comp = 2
-    elif competition <= 10:
-        comp = 12
-    elif competition <= 30:
-        comp = 9
-    elif competition <= 60:
-        comp = 6
-    elif competition <= 120:
-        comp = 3
-    else:
-        comp = 1
-
     if offers_measured:
-        score = min(100, vol + liq + off + comp)
+        score = min(100, round((vol + liq + off) * 100 / 88))
     else:
-        # Offers not yet captured for this variant — score the three proven factors
-        # (max 82) renormalised to 100 so an un-measured signal is neutral, not a
+        # Offers not yet captured for this variant — score the two proven factors
+        # (max 70) renormalised to 100 so an un-measured signal is neutral, not a
         # penalty. Once offers arrive, the formula above applies.
-        score = min(100, round((vol + liq + comp) * 100 / 82))
+        score = min(100, round((vol + liq) * 100 / 70))
     if score >= 70:
         verdict = "🚀 High Resale Opportunity"
     elif score >= 50:
@@ -769,6 +752,17 @@ def _verify_sold_on() -> bool:
     return os.environ.get("VINTED_VERIFY_SOLD") == "1"
 
 
+def _sold_within_days(row: dict, now: datetime, days: int = 30) -> bool:
+    """Was this confirmed-sale row's last_seen (≈ when it sold) within the trailing window?
+    Used for a VERIFIED monthly sales count (client spec, 2026-09-04), replacing the old
+    gone/window_days*30 extrapolation which could inflate a young variant's rate or dilute
+    an old one's recent activity into a long-run average."""
+    try:
+        return (now - _parse(row["last_seen"])).total_seconds() <= days * 86400
+    except Exception:
+        return False
+
+
 def variant_analysis(
     tracking: dict,
     now: datetime | None = None,
@@ -839,7 +833,7 @@ def variant_analysis(
             model, base = "", ""
         g = groups.setdefault(
             v,
-            {"active": 0, "gone": 0, "lifes": [], "prices": [], "sold_prices": [],
+            {"active": 0, "gone": 0, "sold_30d": 0, "lifes": [], "prices": [], "sold_prices": [],
              "offers_total": 0, "offers_listings": 0,
              "model": model, "base": base, "vision_titles": collections.Counter()},
         )
@@ -863,6 +857,8 @@ def variant_analysis(
         # and unverified "disappeared" (in verify mode) are NEVER counted as sales.
         elif r["status"] == "sold" or (r["status"] == "disappeared" and not _verify_sold_on()):
             g["gone"] += 1
+            if _sold_within_days(r, now, 30):
+                g["sold_30d"] += 1
             lh = r.get("lifespan_hours")
             if lh not in ("", None):
                 try:
@@ -898,7 +894,9 @@ def variant_analysis(
 
     out = []
     for v, g in groups.items():
-        est_30d = round(g["gone"] / window_days * 30, 1)
+        # Verified — real confirmed sales in the trailing 30 days, not an extrapolated rate
+        # (client spec, 2026-09-04). Feeds demand_level, trend, the report, AND the score.
+        est_30d = g["sold_30d"]
         med_days = (
             round(statistics.median(g["lifes"]) / 24, 1) if g["lifes"] else None
         )
@@ -913,7 +911,7 @@ def variant_analysis(
             round(statistics.median(g["sold_prices"]), 1) if g["sold_prices"] else None
         )
         opp = compute_variant_opportunity(
-            g["active"], est_30d, med_days, g["offers_total"],
+            est_30d, med_days, g["offers_total"],
             offers_measured=g["offers_listings"] > 0,
         )
         product = product_display_name(g.get("model", ""), g.get("base", ""), brand)
@@ -1670,6 +1668,25 @@ def _demo() -> None:
     # truly nothing usable -> still empty, same as before.
     assert build_variant("mystery item", "", "", "") == ""
     print("track_sales self-check OK: build_variant degrades gracefully for non-bottle products")
+
+    # _sold_within_days: verified trailing-30-day window (client spec, 2026-09-04).
+    now = datetime(2026, 9, 4, tzinfo=timezone.utc)
+    recent = {"last_seen": "2026-08-20 00:00:00"}  # 15 days ago
+    old = {"last_seen": "2026-06-01 00:00:00"}      # ~95 days ago
+    assert _sold_within_days(recent, now) is True
+    assert _sold_within_days(old, now) is False
+    assert _sold_within_days({"last_seen": "garbage"}, now) is False
+
+    # compute_variant_opportunity: competition must never move the score (client: "a good,
+    # high-selling product can still face significant competition") — the parameter is gone
+    # entirely now, so there's no way to feed it in. Velocity's full score requires selling
+    # within 72h; one day slower already scores lower.
+    fast = compute_variant_opportunity(est_sales_30d=1, median_days=3, offers_total=0, offers_measured=True)
+    slow = compute_variant_opportunity(est_sales_30d=1, median_days=3.1, offers_total=0, offers_measured=True)
+    assert fast["score"] > slow["score"], (fast, slow)
+    maxed = compute_variant_opportunity(est_sales_30d=40, median_days=1, offers_total=25, offers_measured=True)
+    assert maxed == {"score": 100, "verdict": "🚀 High Resale Opportunity"}, maxed
+    print("track_sales self-check OK: verified 30d volume + 72h velocity + competition unscored")
 
 
 if __name__ == "__main__":
