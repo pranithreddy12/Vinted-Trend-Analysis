@@ -167,17 +167,18 @@ def explain(v: dict) -> list:
     return bits
 
 
-def alerts(ranked: list, min_score: int = 70, min_confirmed_sales: int = 40) -> list:
+def alerts(ranked: list, min_score: int = 70, min_confirmed_sales: int = 30) -> list:
     """Smart alerts — the actionable subset of the ranking: products worth buying to resell NOW.
     An item alerts when its discovery score clears the bar, it has real demand, it isn't already
     saturated, AND demand has been sufficiently DEMONSTRATED — not just a lucky handful of sales.
 
-    Client feedback (2026-08-22): "a product should have at least 40 confirmed sales... Products
-    with only 1, 2, or a few sales followed by no further activity should be automatically
-    excluded." min_confirmed_sales is a hard floor on sold_tracked (VINTED_VERIFY_SOLD-confirmed
-    sales within the tracking window, not an estimate) — the demand-level/score checks alone
-    already favour high volume but don't enforce an absolute minimum sample size, so a product
-    that spiked briefly on 2-3 real sales could otherwise still clear them.
+    Client feedback (2026-09-04): "30 confirmed recent sales per month (rather than 30 in
+    total); this is an additional rule." Supersedes the original 2026-08-22 ask (40 confirmed
+    sales, no time window) — min_confirmed_sales is now a floor on est_sales_30d (VERIFIED
+    confirmed sales in the trailing 30 days, per the 2026-09-04 scoring fix — not a cumulative
+    since-tracking-began count, and not an extrapolated rate). A product that sold 40 times over
+    6 months but has gone quiet no longer clears this; a product with 30+ real sales in the last
+    30 days does.
 
     Tagged RISING when momentum is strong, else HOT. (True 'brand-new product' novelty needs a
     first-seen set, a small add once history exists — see Phase 6 notes.)"""
@@ -185,7 +186,7 @@ def alerts(ranked: list, min_score: int = 70, min_confirmed_sales: int = 40) -> 
     for v in ranked:
         strong_demand = v.get("demand_level") in ("High", "Medium")
         not_saturated = str(v.get("competition_level", "")).lower() in ("low", "medium", "")
-        demonstrated = v.get("sold_tracked", 0) >= min_confirmed_sales
+        demonstrated = v.get("est_sales_30d", 0) >= min_confirmed_sales
         if (v.get("discovery_score", 0) >= min_score and strong_demand and not_saturated
                 and demonstrated):
             out.append({**v, "alert": "RISING" if v.get("momentum_pct", 0) >= 30 else "HOT"})
@@ -235,16 +236,18 @@ def _demo() -> None:
     # Alerts: a high-score, in-demand, un-saturated, sufficiently-DEMONSTRATED item fires
     # (RISING when momentum strong); a saturated one does not.
     hot = {"discovery_score": 80, "demand_level": "High", "competition_level": "Low",
-           "momentum_pct": 45, "product": "x", "reason": "", "sold_tracked": 40}
+           "momentum_pct": 45, "product": "x", "reason": "", "est_sales_30d": 35}
     sat = {"discovery_score": 80, "demand_level": "High", "competition_level": "High",
-           "momentum_pct": 45, "product": "y", "reason": "", "sold_tracked": 40}
+           "momentum_pct": 45, "product": "y", "reason": "", "est_sales_30d": 35}
     al = alerts([hot, sat])
     assert len(al) == 1 and al[0]["alert"] == "RISING", al
     assert alerts([sat]) == [], "saturated item must not alert"
-    # Client feedback (2026-08-22): "1, 2, or a few sales... should be automatically excluded" —
-    # a hard floor on confirmed sales, independent of score/demand looking otherwise strong.
-    flukey = {**hot, "sold_tracked": 2}
-    assert alerts([flukey]) == [], "a few lucky sales must not clear the 40-sale floor"
+    # Client feedback (2026-09-04): "30 confirmed recent sales per month (rather than 30 in
+    # total)" — the floor must read the trailing-30-day figure, not a lifetime total. A variant
+    # with a huge cumulative history (sold_tracked) but few sales in the last 30 days must NOT
+    # clear it.
+    flukey = {**hot, "est_sales_30d": 2, "sold_tracked": 500}
+    assert alerts([flukey]) == [], "a big lifetime total but few RECENT sales must not clear the floor"
     assert alerts([flukey], min_confirmed_sales=2) == [flukey | {"alert": "RISING"}], \
         "the floor must be the thing gating it, not something else"
     # explain(): plain-language, data-grounded reasons matching the client's examples.
