@@ -839,7 +839,7 @@ def variant_analysis(
             model, base = "", ""
         g = groups.setdefault(
             v,
-            {"active": 0, "gone": 0, "lifes": [], "prices": [],
+            {"active": 0, "gone": 0, "lifes": [], "prices": [], "sold_prices": [],
              "offers_total": 0, "offers_listings": 0,
              "model": model, "base": base, "vision_titles": collections.Counter()},
         )
@@ -885,7 +885,14 @@ def variant_analysis(
                     pass
         try:
             if r.get("price") not in ("", None):
-                g["prices"].append(float(r["price"]))
+                price = float(r["price"])
+                g["prices"].append(price)
+                # Last known asking price for a CONFIRMED sale is the closest proxy we have to
+                # "what it actually sold for" (Vinted doesn't expose the real transaction price).
+                # Only status=="sold" (VINTED_VERIFY_SOLD-confirmed) counts here — a bare
+                # disappearance is never good enough evidence of a real sale price either.
+                if r["status"] == "sold":
+                    g["sold_prices"].append(price)
         except ValueError:
             pass
 
@@ -895,7 +902,16 @@ def variant_analysis(
         med_days = (
             round(statistics.median(g["lifes"]) / 24, 1) if g["lifes"] else None
         )
+        # Client feedback: a plain mean is skewed by a few extreme listings; median is the more
+        # reliable headline number. Keep mean too (avg_price, for anything already reading it)
+        # and add median/range/confirmed-sold-price so callers can show the fuller picture.
         avg_price = round(statistics.mean(g["prices"]), 1) if g["prices"] else None
+        median_price = round(statistics.median(g["prices"]), 1) if g["prices"] else None
+        price_low = round(min(g["prices"]), 1) if g["prices"] else None
+        price_high = round(max(g["prices"]), 1) if g["prices"] else None
+        sold_median_price = (
+            round(statistics.median(g["sold_prices"]), 1) if g["sold_prices"] else None
+        )
         opp = compute_variant_opportunity(
             g["active"], est_30d, med_days, g["offers_total"],
             offers_measured=g["offers_listings"] > 0,
@@ -917,6 +933,10 @@ def variant_analysis(
                 "competition_level": competition_label(g["active"]),
                 "trend": variant_trend(est_30d, prev_snap.get(v)),
                 "avg_price": avg_price,
+                "median_price": median_price,
+                "price_low": price_low,
+                "price_high": price_high,
+                "sold_median_price": sold_median_price,
                 "offers": g["offers_total"],
                 "offers_coverage": g["offers_listings"],
                 "confidence": variant_confidence(g["gone"], window_days),
@@ -968,7 +988,17 @@ def format_variant_card(variant_name: str, v: dict) -> str:
     is a fallback title; the variant's own resolved product name is preferred."""
     md = v["median_days_to_sell"]
     vel = f"{md} days" if md is not None else "not yet measured"
-    price = f"€{v['avg_price']}" if v["avg_price"] is not None else "—"
+    # Client feedback: median is more reliable than mean when a few extreme listings can skew
+    # it. Lead with median + the price range; keep mean available as a secondary figure.
+    if v.get("median_price") is not None:
+        price = f"€{v['median_price']} (median"
+        if v.get("price_low") is not None and v.get("price_high") is not None:
+            price += f", range €{v['price_low']}–{v['price_high']}"
+        price += ")"
+        if v.get("sold_median_price") is not None:
+            price += f" · €{v['sold_median_price']} sold-median"
+    else:
+        price = "—"
     title = v.get("product") or variant_name.title()
     lines = [
         f"{title}",
@@ -979,7 +1009,7 @@ def format_variant_card(variant_name: str, v: dict) -> str:
     if _show_offers():
         lines.append(f"📈 Buyer Demand (offers): {_offers_display(v)}")
     lines += [
-        f"🏷️ Average Selling Price: {price}",
+        f"🏷️ Price: {price}",
         f"👥 Active Listings: {v['competition']}",
         f"📊 Sales Trend: {v['trend']}",
         f"🏆 Competition: {v['competition_level']}",
@@ -1003,6 +1033,10 @@ def save_variant_report(variants: list, output_file: str = "variant_report.csv")
         "competition_level",
         "trend",
         "avg_price",
+        "median_price",
+        "price_low",
+        "price_high",
+        "sold_median_price",
         "offers",
         "offers_coverage",
         "confidence",
@@ -1374,7 +1408,9 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
         for v in variants[:12]:
             md = v["median_days_to_sell"]
             vel = f"{md}d" if md is not None else "—"
-            price = f"{v['avg_price']}€" if v["avg_price"] is not None else "—"
+            # Median, not mean (client feedback: a few extreme listings skew the mean) — the
+            # full range + sold-price detail is in the TOP OPPORTUNITY card above and the CSV.
+            price = f"{v['median_price']}€" if v["median_price"] is not None else "—"
             comp = f"{v['competition_level']}({v['competition']})"
             line = (
                 f"  {v['variant'][:21]:<21}{('~' + str(v['est_sales_30d'])):>10}"
