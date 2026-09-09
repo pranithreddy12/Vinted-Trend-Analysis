@@ -366,7 +366,8 @@ def compose_title(identity: dict, title_hint: str = "", listing_colour: str = ""
 def identify_listings(raw_catalog_items: list, slug: str,
                       provider: VisionProvider | None = None,
                       max_new: int | None = None,
-                      colours: dict | None = None) -> dict:
+                      colours: dict | None = None,
+                      offers: dict | None = None) -> dict:
     """Integration hook (not yet wired live). Identify listings we haven't seen, cache the
     results, and return {listing_id: {**identity, 'generated_title': ...}}.
 
@@ -379,6 +380,13 @@ def identify_listings(raw_catalog_items: list, slug: str,
     vision model's colour guess in the composed title (the listing knows its colour; the photo
     only guesses). The catalog feed has no colour, so a catalog-only caller passes nothing and
     colour falls back to the title text, then the vision guess.
+
+    `offers` = optional {listing_id: offer_count} from the tracker's item-page enrichment (offers
+    aren't in the catalog feed, so this must run AFTER enrichment captures them). Client spec
+    (2026-09-09): only identify listings already showing real buyer interest — VINTED_VISION_
+    MIN_OFFERS or more offers (default 4) — instead of a blanket sweep, so AI spend focuses on
+    demonstrated demand. Without `offers` (e.g. an ad-hoc/test caller with no tracking state),
+    falls back to the old behaviour: every listing considered, best-first by likes.
     """
     provider = provider or get_provider()
     cache = VisionCache(slug)
@@ -387,15 +395,17 @@ def identify_listings(raw_catalog_items: list, slug: str,
         # burst. The client's account-level spend cap is the real ceiling; this is a rail.
         max_new = int(os.environ.get("VINTED_VISION_MAX_NEW", "200"))
 
-    # Demand-first ordering (client request): spend the AI budget on the best products
-    # first. Likes (favourite_count) are the demand signal available for free on every
-    # catalog item — no history needed. Sales/offers priority would need the tracking
-    # state; likes are the immediate proxy.
+    # Likes (favourite_count) — free on every catalog item, used as a tie-break order within
+    # whatever set of listings actually qualifies below.
     likes = {str(it.get("id")): (it.get("favourite_count") or 0) for it in raw_catalog_items}
     # Vinted's mandatory clothing size is right in the catalog feed (`size_title`) — no item
     # page needed. Empty for non-clothing (bottles), so it only fills in where it's real.
     sizes = {str(it.get("id")): (it.get("size_title") or "") for it in raw_catalog_items}
     listings = ic.listings_from_catalog(raw_catalog_items)
+    if offers is not None:
+        min_offers = int(os.environ.get("VINTED_VISION_MIN_OFFERS", "4"))
+        listings = [ls for ls in listings
+                    if int(offers.get(str(ls.id)) or 0) >= min_offers]
     listings.sort(key=lambda ls: likes.get(str(ls.id), 0), reverse=True)
 
     # Product-level reuse (opt-in VINTED_DEDUP=1): identify each PRODUCT once and reuse it for
@@ -506,6 +516,22 @@ def _demo() -> None:
     assert compose_title(_empty_identity(), "") == "", "empty identity must stay empty"
     # attributes as a list coerces to a phrase.
     assert _coerce_identity({"attributes": ["foam", "4 steps"]})["attributes"] == "foam, 4 steps"
+
+    # identify_listings: offers≥4 targeting (client spec, 2026-09-09) — only listings with
+    # real buyer interest get identified; below-threshold listings are skipped entirely.
+    raw_items = [
+        {"id": 1, "title": "hot item", "photo": {"url": "http://x/1.jpg"}, "favourite_count": 1},
+        {"id": 2, "title": "cold item", "photo": {"url": "http://x/2.jpg"}, "favourite_count": 9},
+    ]
+    slug = "_selftest_offers_gate"
+    cache_path = os.path.join(ic.CACHE_DIR, f"vision_{ic._safe(slug)}.json")
+    try:
+        result = identify_listings(raw_items, slug, offers={"1": 5, "2": 1})
+        assert "1" in result and "2" not in result, \
+            "only the listing with offers >= the floor should be identified"
+    finally:
+        if os.path.exists(cache_path):
+            os.remove(cache_path)
     print("vision_identify self-check OK:", repr(g))
 
 

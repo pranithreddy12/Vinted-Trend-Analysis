@@ -1596,11 +1596,19 @@ def main():
         except Exception as e:
             print(f"⚠️  visual variant indexing skipped: {type(e).__name__}: {e}")
 
+    # Capture publish time across parallel tabs for active listings missing it. MUST run
+    # before vision identification below — offers (the vision targeting signal) live on the
+    # item page and are captured here, not in the catalog feed.
+    if os.environ.get("VINTED_TRACK_ENRICH", "1") != "0":
+        enrich_publish_times(tracking, path)
+
     # Phase 5 Stage A (opt-in): vision-AI product identification → full, specific
     # titles. Uses the deterministic stub by default (free, no key); set
     # VINTED_VISION_PROVIDER=anthropic once the client's API key is in the env to use
-    # the real vision model. Identifies new listings only, best-first (by likes),
-    # capped per run; results are cached so each product is paid for once.
+    # the real vision model. Client spec (2026-09-09): identify only listings already
+    # showing real buyer interest (offers ≥ VINTED_VISION_MIN_OFFERS, default 4) instead
+    # of a blanket sweep — capped per run; results are cached so each product is paid for
+    # once (VINTED_DEDUP=1 extends that across sellers/listings of the same product).
     if os.environ.get("VINTED_VISION") == "1":
         try:
             import vision_identify
@@ -1609,7 +1617,10 @@ def main():
             # enrichment) over the vision model's photo-guess in the composed title.
             colours = {str(iid): row.get("color", "")
                        for iid, row in tracking.items() if row.get("color")}
-            idents = vision_identify.identify_listings(raw, _slug(keyword), colours=colours)
+            offers = {str(iid): row.get("offers", "") for iid, row in tracking.items()}
+            idents = vision_identify.identify_listings(
+                raw, _slug(keyword), colours=colours, offers=offers
+            )
             # Stage B (opt-in): look up a reference product + price band for GENERIC no-brand
             # items. Off unless VINTED_REFERENCE=1; branded items are untouched.
             if os.environ.get("VINTED_REFERENCE") == "1":
@@ -1617,14 +1628,11 @@ def main():
                 idents = reference_lookup.enrich_generics(idents, _slug(keyword))
             vpath = vision_identify.save_identities(idents, _slug(keyword))
             named = sum(1 for v in idents.values() if v.get("generated_title"))
-            print(f"🔎 product identification: {named}/{len(idents)} titled → {vpath} "
-                  f"(provider: {os.environ.get('VINTED_VISION_PROVIDER', 'stub')})")
+            min_offers = os.environ.get("VINTED_VISION_MIN_OFFERS", "4")
+            print(f"🔎 product identification: {named}/{len(idents)} titled (offers≥{min_offers}) "
+                  f"→ {vpath} (provider: {os.environ.get('VINTED_VISION_PROVIDER', 'stub')})")
         except Exception as e:
             print(f"⚠️  product identification skipped: {type(e).__name__}: {e}")
-
-    # Capture publish time across parallel tabs for active listings missing it.
-    if os.environ.get("VINTED_TRACK_ENRICH", "1") != "0":
-        enrich_publish_times(tracking, path)
 
     save_tracking(path, tracking)
     report(keyword, tracking, newly, disappeared, first_run)
