@@ -18,8 +18,9 @@ stanley loveshackfancy
 smeg insulated bottle
 smeg tumbler
 
-# ---- Owala ----
+# ---- Owala ---- (split like Smeg: a generic "owala bottle" search blends two distinct lines)
 owala bottle
+owala insulated bottle
 
 # ---- Alo Yoga ----
 alo yoga set
