@@ -12,15 +12,11 @@ on the freelancer's machine.
 ## 0. Before you start
 
 - [ ] You have an Anthropic API key (starts with `sk-ant-...`)
-- [ ] The tracker (`run_tracker.bat`, `track_sales.py`, etc.) is already set up and running on
-      this PC per `AUTOMATION.md`
-- [ ] **Install the extra dependencies vision AI needs** (beyond the base `requirements.txt`)
-      — open Command Prompt in the `src` folder and run:
-      ```
-      pip install -r requirements-phase5.txt
-      ```
-      Without this, the tracker will fail with `ModuleNotFoundError: No module named
-      'image_cluster'` once vision AI is turned on in Step 4.
+- [ ] **Run `setup.bat`** (double-click it, or run it from Command Prompt in the `src` folder)
+      — it installs everything in one go, including the vision AI packages, so you don't need
+      to remember a separate `pip install` step. If you already ran the tracker before this
+      guide existed, run `setup.bat` anyway — it's safe to run again, it just re-confirms
+      everything's installed.
 - [ ] **Do not** paste your API key into any chat, email, or file that gets shared/committed
       anywhere. It only ever goes into this machine's own environment variables (Step 2).
 
