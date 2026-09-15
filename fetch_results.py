@@ -276,8 +276,14 @@ def fetch_catalog_via_requests(
         response = requests.get(url, params=params, headers=headers, cookies=cookies)
 
         if response.status_code != 200:
+            # A bare status code hides WHY — a Cloudflare/bot-check challenge page, a
+            # genuine "endpoint moved" 404, and "session rejected" all look identical
+            # without this. Print a snippet of the actual body so a real failure is
+            # diagnosable from the log alone, not just guessable from the number.
+            snippet = (response.text or "")[:200].replace("\n", " ")
             print(
-                f"  ❌ Error {response.status_code} for keyword: {keyword} on page {pg}"
+                f"  ❌ Error {response.status_code} for keyword: {keyword} on page {pg} "
+                f"(domain: {domain}) — body: {snippet!r}"
             )
             break
 
