@@ -47,6 +47,6 @@ exit /b 0
 
 :fail
 echo.
-echo [ERROR] Setup did not finish — see the message above.
+echo [ERROR] Setup did not finish - see the message above.
 pause
 exit /b 1
