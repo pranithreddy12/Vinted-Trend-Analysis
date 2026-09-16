@@ -215,6 +215,117 @@ def get_cookies_and_token(context, page):
     return cookies_dict, access_token
 
 
+def _balanced_json_at(s: str, start: int) -> str | None:
+    """s[start] must be '{'. Scan forward tracking string/escape state so braces INSIDE
+    string values (URLs, accessibility labels, etc.) don't throw off the depth count.
+    Returns the substring from `start` through its matching close brace, or None if the
+    text ends before the object closes (a truncated/partial chunk)."""
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(s)):
+        c = s[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    return s[start : i + 1]
+    return None
+
+
+def _extract_product_items(html: str) -> list:
+    """Vinted's catalog page (2026-09) no longer exposes a JSON search API — the endpoint
+    returns a genuine 404 (confirmed live: real Vinted-branded 404 page, not a bot-check).
+    The site is now Next.js/React-Server-Components; the SAME data is embedded server-side
+    in the initial HTML response as escaped JSON inside `self.__next_f.push([...])` script
+    chunks — confirmed present in the raw response (no JS execution needed), 96 objects per
+    page matching the old per_page=96 convention exactly.
+
+    Each listing appears as `"productItem":{...}` (one JSON-escape level deep, i.e. `\\"`
+    for `"` within the page's raw text). Unescaping once and balanced-brace-matching each
+    occurrence extracts the full object — more complete than the old API even was (includes
+    thumbnailUrls, dominantColor, etc). Returns raw productItem dicts, deduped by id; caller
+    maps them to the shape the rest of the pipeline expects (see _map_product_item)."""
+    unescaped = html.replace('\\"', '"').replace("\\\\", "\\")
+    items, seen = [], set()
+    for m in re.finditer(r'"productItem":\{', unescaped):
+        blob = _balanced_json_at(unescaped, m.end() - 1)
+        if not blob:
+            continue
+        try:
+            obj = json.loads(blob)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        iid = obj.get("id")
+        if iid is None or iid in seen:
+            continue
+        seen.add(iid)
+        items.append(obj)
+    return items
+
+
+def _map_product_item(pi: dict, keyword: str) -> dict:
+    """Map a raw productItem (see _extract_product_items) to the item shape the rest of
+    the pipeline already expects (same field names the old JSON API used), so nothing
+    downstream needs to change.
+
+    Two real gaps vs the old API, both degrade gracefully rather than break anything:
+    - No brand field on the catalog listing anymore. Live-tested: the title does NOT
+      reliably lead with the brand ("Peluche dragon façon Jellycat" — brand is mid-string),
+      so a naive "first word" guess is wrong often enough to matter. Instead, since every
+      watch-list keyword here already names a brand, check whether one of the SEARCHED
+      keyword's words appears anywhere in the title (case-insensitive) and use that; only
+      fall back to the first word when the keyword doesn't appear in the title at all
+      (a seedless category sweep has no keyword to match against).
+    - No size_title or created_at_ts on the catalog listing anymore (was previously free,
+      no item-page visit needed). Left empty here; created_at_ts still gets backfilled by
+      per-listing enrichment same as before. size_title has NO fallback today — clothing
+      size precision regresses until enrichment is taught to read it from the item page's
+      own JSON-LD (same place it already reads brand/colour) — a real, separate follow-up.
+    """
+    title = pi.get("title") or ""
+    price = pi.get("price") or {}
+    photos = pi.get("photos") or []
+    photo_url = (photos[0].get("url") if photos else "") or pi.get("thumbnailUrl") or ""
+    user = pi.get("user") or {}
+    brand = ""
+    title_words = title.split()
+    for kw in keyword.split():
+        if len(kw) < 3:
+            continue  # skip short/generic tokens ("de", "set") that could false-match
+        for w in title_words:
+            if w.strip(",.").lower() == kw.lower():
+                brand = w.strip(",.")
+                break
+        if brand:
+            break
+    if not brand:
+        brand = title_words[0] if title_words else ""
+    return {
+        "id": pi.get("id"),
+        "title": title,
+        "brand_title": brand,
+        "size_title": "",  # not on the new page payload — see docstring
+        "created_at_ts": "",  # not on the new page payload — enrichment backfills this
+        "favourite_count": pi.get("favouriteCount") or 0,
+        "view_count": 0,  # not exposed on the new page payload
+        "price": {"amount": (price.get("amount") or "0")},
+        "photo": {"url": photo_url},
+        "user": {"country_code": user.get("country_code", "")},
+    }
+
+
 def fetch_catalog_via_requests(
     keyword: str,
     cookies: dict,
@@ -225,7 +336,11 @@ def fetch_catalog_via_requests(
     domain: str = "fr",
 ) -> list:
     """
-    Fetch catalog items for a keyword via the Vinted API.
+    Fetch catalog items for a keyword by parsing Vinted's search-results PAGE (see
+    _extract_product_items — the JSON API this used to call, /api/v2/catalog/items,
+    returns a genuine 404 as of 2026-09-15; Vinted retired it in favour of server-rendering
+    everything, confirmed by watching every network request the site itself makes across a
+    real search, pagination, and sort — none of them call a JSON API anymore).
     max_pages=None means unlimited — keeps going until Vinted returns 0 items.
     catalog_id: optional Vinted category ID to narrow results.
     stop_when_old_ratio: if this fraction of items on a page are >72h old, stop early.
@@ -233,7 +348,7 @@ def fetch_catalog_via_requests(
     for querying several of the client's cross-border shipping zones at once.
     """
     all_items = []
-    url = f"https://www.vinted.{domain}/api/v2/catalog/items"
+    url = f"https://www.vinted.{domain}/catalog"
     pg = 1
 
     while True:
@@ -242,19 +357,14 @@ def fetch_catalog_via_requests(
 
         params = {
             "page": pg,
-            "per_page": 96,
             "search_text": keyword,
             "order": "newest_first",
         }
 
         if catalog_id:
-            # "catalog[]" is silently IGNORED by this endpoint (200 OK, unfiltered results) —
-            # confirmed live 2026-08-29 by replaying the exact request from an authenticated
-            # browser tab. The real parameter name, verified against Vinted's own network
-            # traffic, is "catalog_ids". This was the seedless category sweep's actual
-            # filter the whole time; it silently returned unfiltered results instead of
-            # erroring, so this bug had never surfaced despite an earlier "verified live" check
-            # (which only confirmed items came back, not that they were category-filtered).
+            # Carried over from the old API param name. NOT yet re-verified against the new
+            # page-render path specifically — if category sweeps come back unfiltered again,
+            # check this first (same class of bug as the catalog[]/catalog_ids mixup).
             params["catalog_ids"] = catalog_id
 
         headers = {
@@ -263,11 +373,9 @@ def fetch_catalog_via_requests(
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
-            "Accept": "application/json, text/plain, */*",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
             "Referer": f"https://www.vinted.{domain}/catalog",
-            "Origin": f"https://www.vinted.{domain}",
-            "X-Requested-With": "XMLHttpRequest",
         }
 
         if access_token:
@@ -276,10 +384,6 @@ def fetch_catalog_via_requests(
         response = requests.get(url, params=params, headers=headers, cookies=cookies)
 
         if response.status_code != 200:
-            # A bare status code hides WHY — a Cloudflare/bot-check challenge page, a
-            # genuine "endpoint moved" 404, and "session rejected" all look identical
-            # without this. Print a snippet of the actual body so a real failure is
-            # diagnosable from the log alone, not just guessable from the number.
             snippet = (response.text or "")[:200].replace("\n", " ")
             print(
                 f"  ❌ Error {response.status_code} for keyword: {keyword} on page {pg} "
@@ -287,8 +391,8 @@ def fetch_catalog_via_requests(
             )
             break
 
-        data = response.json()
-        items = data.get("items", [])
+        raw_items = _extract_product_items(response.text)
+        items = [_map_product_item(pi, keyword) for pi in raw_items]
 
         if not items:
             print(f"  📄 Page {pg}: no more items — stopping")
@@ -2181,5 +2285,43 @@ def test_single_url(url):
         page.close()
 
 
+def _demo() -> None:
+    """Self-check for _extract_product_items/_map_product_item (2026-09-15 endpoint switch,
+    catalog search moved from a JSON API to parsing the server-rendered page). Uses a
+    synthetic fixture shaped like the real page — a `self.__next_f.push([1, "..."])` script
+    chunk containing one JSON-escape level of `\\"productItem\\":{...}` — so this runs
+    offline, no network needed."""
+    fixture = (
+        '<script>self.__next_f.push([1, "..."productItem":{"id":123,"title":"Jellycat '
+        "Dragon Blue\\\",\\\"favouriteCount\\\":7,\\\"price\\\":{\\\"amount\\\":\\\"25.00\\\","
+        "\\\"currencyCode\\\":\\\"EUR\\\"},\\\"photos\\\":[{\\\"url\\\":\\\"https://img/1.jpg\\\"}],"
+        '\\"thumbnailUrl\\":\\"https://img/thumb.jpg\\",\\"user\\":{\\"id\\":1}},'
+        '\\"catalogTracking\\":{\\"ownerId\\":1}}..."])</script>'
+    )
+    items = _extract_product_items(fixture)
+    assert len(items) == 1, f"expected 1 item, got {len(items)}"
+    assert items[0]["id"] == 123 and items[0]["title"] == "Jellycat Dragon Blue", items[0]
+
+    mapped = _map_product_item(items[0], "jellycat dragon")
+    assert mapped["id"] == 123
+    assert mapped["brand_title"] == "Jellycat", mapped  # matched against the search keyword
+    assert mapped["price"]["amount"] == "25.00"
+    assert mapped["photo"]["url"] == "https://img/1.jpg"
+    assert mapped["favourite_count"] == 7
+
+    # A title that doesn't contain the keyword at all (off-brand result) falls back to
+    # the title's own first word rather than crashing or returning "".
+    off_brand = _map_product_item({"id": 9, "title": "Random Thing", "price": {}}, "jellycat")
+    assert off_brand["brand_title"] == "Random", off_brand
+
+    # No productItem in the page (e.g. a genuinely empty results page) -> empty list, not
+    # an error - this is how "no more pages" is detected by the caller.
+    assert _extract_product_items("<html>no results</html>") == []
+    print("fetch_results self-check OK: page-embedded item extraction + brand derivation")
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
+        _demo()
+    else:
+        main()
