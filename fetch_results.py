@@ -362,9 +362,11 @@ def fetch_catalog_via_requests(
         }
 
         if catalog_id:
-            # Carried over from the old API param name. NOT yet re-verified against the new
-            # page-render path specifically — if category sweeps come back unfiltered again,
-            # check this first (same class of bug as the catalog[]/catalog_ids mixup).
+            # Same param name as the old API. Re-verified live against the new page-render
+            # path (2026-09-15, category 1918/home) — correctly returns only home-category
+            # items, not an unfiltered sweep. If category sweeps ever come back unfiltered
+            # again, check this param first (same class of bug as the old catalog[]/
+            # catalog_ids mixup).
             params["catalog_ids"] = catalog_id
 
         headers = {

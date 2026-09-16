@@ -23,8 +23,8 @@ velocity and trend become accurate over time (and confidence rises to High after
    > possible later but likely needs a paid residential proxy.)
 
 2. **Install** Python 3 + Chrome, then in this folder run:
-   - Mac: `sh setup.sh`  · Windows: `pip install -r requirements.txt` then
-     `python -m playwright install chromium`
+   - Mac: `sh setup.sh`  · Windows: `setup.bat` (installs everything in one step,
+     including the vision AI packages)
 
 3. **Choose the products** to monitor — edit `tracked_keywords.txt` (one per line).
 
