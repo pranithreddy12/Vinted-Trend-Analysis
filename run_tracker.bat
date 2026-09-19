@@ -83,8 +83,10 @@ if not exist tracked_keywords.txt (
 )
 
 if not exist logs mkdir logs
-set LOGFILE=logs\run_%date:~-4,4%-%date:~-10,2%-%date:~-7,2%_%time:~0,2%%time:~3,2%.log
-set LOGFILE=%LOGFILE: =0%
+REM Timestamp from PowerShell, NOT %date%: its order is locale-dependent (French Windows gave
+REM YYYY-DD-MM, so logs sorted wrongly across months) and %time% pads hours with a space.
+for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HHmm"') do set STAMP=%%i
+set LOGFILE=logs\run_%STAMP%.log
 
 echo [%date% %time%] === automated tracking run starting === > "%LOGFILE%"
 echo [%date% %time%] === automated tracking run starting ===

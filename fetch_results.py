@@ -383,7 +383,18 @@ def fetch_catalog_via_requests(
         if access_token:
             headers["Authorization"] = f"Bearer {access_token}"
 
-        response = requests.get(url, params=params, headers=headers, cookies=cookies)
+        # No timeout used to mean one stalled connection froze the whole run indefinitely — worse
+        # now that each page is ~7MB. (connect, read): fail fast on connect, allow a big body.
+        try:
+            response = requests.get(
+                url, params=params, headers=headers, cookies=cookies, timeout=(15, 90)
+            )
+        except requests.RequestException as e:
+            print(
+                f"  ❌ Network error for keyword: {keyword} on page {pg} "
+                f"(domain: {domain}) — {type(e).__name__}: {e}"
+            )
+            break  # partial results are caught by track_sales' collapsed-fetch guard
 
         if response.status_code != 200:
             snippet = (response.text or "")[:200].replace("\n", " ")
@@ -2319,6 +2330,28 @@ def _demo() -> None:
     # No productItem in the page (e.g. a genuinely empty results page) -> empty list, not
     # an error - this is how "no more pages" is detected by the caller.
     assert _extract_product_items("<html>no results</html>") == []
+
+    # REGRESSION (pre-share bug hunt): a network failure must not raise out of the fetch (the
+    # request also had no timeout, so a stalled connection could hang a run forever). Fake
+    # requests.get: page 1 fine, page 2 times out -> we keep page 1 and stop cleanly.
+    class _Resp:
+        status_code = 200
+        text = fixture
+    calls = {"n": 0, "timeout": None}
+    def _fake_get(url, **kw):
+        calls["n"] += 1
+        calls["timeout"] = kw.get("timeout")
+        if calls["n"] == 2:
+            raise requests.exceptions.ReadTimeout("simulated stall")
+        return _Resp()
+    _real_get, _real_delay = requests.get, globals()["human_delay"]
+    requests.get, globals()["human_delay"] = _fake_get, lambda *a, **k: None
+    try:
+        got = fetch_catalog_via_requests("jellycat", {}, "", max_pages=None)
+    finally:
+        requests.get, globals()["human_delay"] = _real_get, _real_delay
+    assert len(got) == 1 and calls["n"] == 2, (len(got), calls)
+    assert calls["timeout"], "requests must carry a timeout"
     print("fetch_results self-check OK: page-embedded item extraction + brand derivation")
 
 

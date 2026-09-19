@@ -27,14 +27,20 @@ python -m pip install -r requirements.txt
 if errorlevel 1 goto :fail
 
 echo.
-echo [2/3] Installing vision AI packages (product identification)...
-python -m pip install -r requirements-phase5.txt
+echo [2/3] Setting up Browser Automation (Playwright)...
+python -m playwright install chromium
 if errorlevel 1 goto :fail
 
 echo.
-echo [3/3] Setting up Browser Automation (Playwright)...
-python -m playwright install chromium
-if errorlevel 1 goto :fail
+echo [3/3] Installing vision AI packages (optional - product identification)...
+REM Optional: runs LAST and a failure here is NOT fatal, so it can never block the essentials
+REM above (e.g. no torch build for a very new Python version). Tracking works without it.
+python -m pip install -r requirements-phase5.txt
+if errorlevel 1 (
+    echo.
+    echo [WARNING] Vision AI packages did not install. Tracking will still work; only AI
+    echo product identification is unavailable until this is fixed. Send us the message above.
+)
 
 echo.
 echo ===================================================

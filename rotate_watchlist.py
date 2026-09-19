@@ -21,13 +21,32 @@ import sys
 STATE_FILE = "tracking/.watchlist_rotation"
 
 
+def _dedupe_key(entry: str) -> str:
+    """Two entries that track_sales would write to the SAME tracking file ("Stanley Quencher" vs
+    "stanley quencher" — its slug lowercases) must count as one. A category sweep is identified by
+    its id alone, whatever its label says."""
+    words = entry.lower().split()
+    if words and words[0].startswith("cat:"):
+        return words[0]  # "cat:1918" — the label after it doesn't change what is swept
+    return " ".join(words)
+
+
 def read_entries(path: str) -> list:
-    entries = []
+    entries, seen = [], set()
     with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if line and not line.startswith("#"):
-                entries.append(line)
+            if not line or line.startswith("#"):
+                continue
+            key = _dedupe_key(line)
+            if key in seen:
+                # Processing the same product twice in one run also halves the disappearance
+                # debounce (missed_runs counts passes, not runs) — so drop it. stderr: stdout is
+                # the rotated list that run_tracker redirects into a file.
+                print(f"rotate_watchlist: ignoring duplicate entry {line!r}", file=sys.stderr)
+                continue
+            seen.add(key)
+            entries.append(line)
     return entries
 
 
@@ -65,6 +84,20 @@ def main():
 def _demo() -> None:
     """Self-check: rotation cycles through the whole list; two consecutive calls together
     cover every entry starting from the front at least once."""
+    # REGRESSION (pre-share bug hunt): the client added "Stanley Quencher" on top of the existing
+    # "stanley quencher" — same tracking file (slug lowercases), so it was processed twice per run,
+    # which also halved the disappearance debounce. Duplicates (any case/spacing, or the same
+    # category id under another label) must collapse to the first occurrence.
+    import tempfile
+    tmp = os.path.join(tempfile.gettempdir(), "rotate_watchlist_selftest_entries.txt")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("# c\nstanley quencher\n  Stanley   Quencher \ncat:1918 home\nCAT:1918 maison\n"
+                "smeg tumbler\ncat:1904 women\n")
+    try:
+        assert read_entries(tmp) == ["stanley quencher", "cat:1918 home", "smeg tumbler",
+                                     "cat:1904 women"], read_entries(tmp)
+    finally:
+        os.remove(tmp)
     entries = [f"item{i}" for i in range(6)]
     assert rotate(entries, 0) == entries
     assert rotate(entries, 3) == ["item3", "item4", "item5", "item0", "item1", "item2"]

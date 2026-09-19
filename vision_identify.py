@@ -17,7 +17,8 @@ Design decisions:
     rest of the system is fully testable before the key exists.
   • Per-listing cache (`phase5_cache/vision_<slug>.json`) → we never pay to identify the
     same listing twice. This is the main cost control at continuous scale.
-  • Photo passed to the model by URL (Vinted CDN) — no download/base64 round-trip.
+  • Photo is downloaded and sent as a base64 image block (the one form every anthropic-compatible
+    endpoint accepts, incl. local Ollama).
   • Capacity is NEVER taken from the image (a photo can't show litres) — the prompt reads it
     from the listing title when present, consistent with the rest of Phase 4/5.
   • Model is configurable (`VINTED_VISION_MODEL`); defaults to a capable model. For very high
@@ -363,6 +364,15 @@ def compose_title(identity: dict, title_hint: str = "", listing_colour: str = ""
     return _with_size(title.strip(), listing_size)
 
 
+def _offer_count(v) -> int:
+    """Offer counts arrive from the tracking CSV as strings ("5", "5.0", ""), None, or (rarely)
+    garbage. A malformed value must not crash the whole identification step — treat it as 0."""
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return 0
+
+
 def identify_listings(raw_catalog_items: list, slug: str,
                       provider: VisionProvider | None = None,
                       max_new: int | None = None,
@@ -405,7 +415,7 @@ def identify_listings(raw_catalog_items: list, slug: str,
     if offers is not None:
         min_offers = int(os.environ.get("VINTED_VISION_MIN_OFFERS", "4"))
         listings = [ls for ls in listings
-                    if int(offers.get(str(ls.id)) or 0) >= min_offers]
+                    if _offer_count(offers.get(str(ls.id))) >= min_offers]
     listings.sort(key=lambda ls: likes.get(str(ls.id), 0), reverse=True)
 
     # Product-level reuse (opt-in VINTED_DEDUP=1): identify each PRODUCT once and reuse it for
@@ -427,34 +437,39 @@ def identify_listings(raw_catalog_items: list, slug: str,
     # stub run's placeholder titles would be silently reused on the first real-model run.
     pname = type(provider).__name__
     out, new, reused = {}, 0, 0
-    for ls in listings:
-        lc = (colours or {}).get(str(ls.id), "")  # listing's declared colour, if the caller has it
-        sz = sizes.get(str(ls.id), "")            # listing's declared clothing size (catalog)
-        cached = cache.get(ls.id)
-        if cached is None or cached.get("_provider") != pname:
-            reuse = None
-            if registry is not None:
-                import product_dedup
-                col_k, cap_k = product_dedup.listing_keys(ls, lc)
-                reuse = registry.find(col_k, cap_k, getattr(ls, "emb", None))
-            if reuse is not None:
-                cached = {**reuse, "_provider": pname, "_reused": True}  # no AI call
-                cache.put(ls.id, cached)
-                reused += 1
-            else:
-                if max_new is not None and new >= max_new:
-                    continue  # cost cap reached this run; remaining listings resolve next run
-                cached = provider.identify(ls.photo_url, title_hint=ls.title)
-                cached["_provider"] = pname
-                cache.put(ls.id, cached)
-                new += 1
+    try:
+        for ls in listings:
+            lc = (colours or {}).get(str(ls.id), "")  # listing's declared colour, if the caller has it
+            sz = sizes.get(str(ls.id), "")            # listing's declared clothing size (catalog)
+            cached = cache.get(ls.id)
+            if cached is None or cached.get("_provider") != pname:
+                reuse = None
                 if registry is not None:
-                    registry.add(col_k, cap_k, getattr(ls, "emb", None), cached)
-        out[ls.id] = {**cached, "generated_title": compose_title(cached, ls.title, lc, sz)}
-    if new or reused:
-        cache.save()
+                    import product_dedup
+                    col_k, cap_k = product_dedup.listing_keys(ls, lc)
+                    reuse = registry.find(col_k, cap_k, getattr(ls, "emb", None))
+                if reuse is not None:
+                    cached = {**reuse, "_provider": pname, "_reused": True}  # no AI call
+                    cache.put(ls.id, cached)
+                    reused += 1
+                else:
+                    if max_new is not None and new >= max_new:
+                        continue  # cost cap reached this run; remaining listings resolve next run
+                    cached = provider.identify(ls.photo_url, title_hint=ls.title)
+                    cached["_provider"] = pname
+                    cache.put(ls.id, cached)
+                    new += 1
+                    if registry is not None:
+                        registry.add(col_k, cap_k, getattr(ls, "emb", None), cached)
+            out[ls.id] = {**cached, "generated_title": compose_title(cached, ls.title, lc, sz)}
+    finally:
+        # A failed call mid-loop (rate limit, network blip, the monthly spend cap) raises out of
+        # here; results already PAID for must still reach disk or they are paid for again next run.
+        if new or reused:
+            cache.save()
+        if registry is not None:
+            registry.save()
     if registry is not None:
-        registry.save()
         print(f"   ♻️  product dedup: {reused} listings reused a known product, "
               f"{new} new AI calls (saved {reused})")
     return out
@@ -532,6 +547,31 @@ def _demo() -> None:
     finally:
         if os.path.exists(cache_path):
             os.remove(cache_path)
+    # REGRESSION (pre-share bug hunt): malformed offer values must not crash the whole step...
+    assert [_offer_count(v) for v in ("5", "5.0", "", None, "abc", 4)] == [5, 5, 0, 0, 0, 4]
+    # ...and identifications already PAID for must survive a later call failing (rate limit,
+    # network blip, monthly spend cap) — before the fix they were only saved at loop end and lost.
+    class _FlakyProvider(VisionProvider):
+        calls = 0
+        def identify(self, photo_url, title_hint=""):
+            _FlakyProvider.calls += 1
+            if _FlakyProvider.calls > 2:
+                raise RuntimeError("simulated API failure")
+            return {**_empty_identity(), "brand": "Stanley", "official_name": "Stanley Quencher"}
+    many = [{"id": i, "title": f"q{i}", "photo": {"url": f"http://x/{i}.jpg"}, "favourite_count": 0}
+            for i in range(1, 6)]
+    slug2 = "_selftest_persist_on_failure"
+    cache_path2 = os.path.join(ic.CACHE_DIR, f"vision_{ic._safe(slug2)}.json")
+    try:
+        try:
+            identify_listings(many, slug2, provider=_FlakyProvider())
+            raise AssertionError("expected the simulated failure to propagate")
+        except RuntimeError:
+            pass
+        assert len(VisionCache(slug2).data) == 2, "paid results must be saved despite the failure"
+    finally:
+        if os.path.exists(cache_path2):
+            os.remove(cache_path2)
     print("vision_identify self-check OK:", repr(g))
 
 
