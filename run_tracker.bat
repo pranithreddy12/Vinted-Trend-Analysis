@@ -134,14 +134,20 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt")
       )
       if "!cat_name!"=="" set "cat_name=category !cat_id!"
       echo [!date! !time!] sweeping category: !cat_id! ^(!cat_name!^)
+      echo [!date! !time!] START category !cat_id! !cat_name! >> "%LOGFILE%"
       set "VINTED_CATALOG_ID=!cat_id!"
       set "VINTED_CATEGORY_NAME=!cat_name!"
       %PYTHON% track_sales.py >> "%LOGFILE%" 2>&1
+      set "rc=!errorlevel!"
+      echo [!date! !time!] END   category !cat_id! !cat_name! - exit code !rc! >> "%LOGFILE%"
       set "VINTED_CATALOG_ID="
       set "VINTED_CATEGORY_NAME="
     ) else (
       echo [!date! !time!] tracking: !kw!
+      echo [!date! !time!] START "!kw!" >> "%LOGFILE%"
       %PYTHON% track_sales.py "!kw!" >> "%LOGFILE%" 2>&1
+      set "rc=!errorlevel!"
+      echo [!date! !time!] END   "!kw!" - exit code !rc! >> "%LOGFILE%"
     )
   )
   timeout /t 30 >nul
