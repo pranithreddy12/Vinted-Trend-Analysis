@@ -63,12 +63,16 @@ REM Confirm the logged-in debug-Chrome is up. If it is not - live-tested 2026-08
 REM silently die during a long unattended run, which used to fail the ENTIRE rest of the watch-
 REM list with no loud warning - try ONE relaunch on the same profile before giving up. A clean
 REM relaunch (no taskkill of other Chrome windows) preserves the saved login: verified live.
-powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3; exit 0 } catch { exit 1 }"
+REM TimeoutSec was 3 - too tight on a loaded/slower machine, live-observed 2026-09-22 firing
+REM before EVERY product (not the rare case this recovery was built for). 8s gives Chrome
+REM room to answer under load before we assume it's actually down.
+powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 8; exit 0 } catch { exit 1 }"
 if errorlevel 1 (
-  echo [%date% %time%] Chrome debug port unreachable - attempting one relaunch...
+  for /f %%c in ('tasklist /FI "IMAGENAME eq chrome.exe" /NH 2^>nul ^| find /c /v ""') do set "chromecount=%%c"
+  echo [%date% %time%] Chrome debug port unreachable - attempting one relaunch... (chrome.exe processes: %chromecount%)
   start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%~dp0vinted_profile" "https://www.vinted.fr"
   timeout /t 12 >nul
-  powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3; exit 0 } catch { exit 1 }"
+  powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 8; exit 0 } catch { exit 1 }"
   if errorlevel 1 (
     echo [%date% %time%] ERROR: Chrome still not running with the debugging port after a relaunch attempt.
     echo    Run start_scraper.bat, log into Vinted, and LEAVE Chrome open. Then retry.
@@ -110,12 +114,13 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt")
   REM of the batch — and on failure we SKIP this product rather than aborting the run,
   REM since Chrome may come back (or a later relaunch may succeed) for the next one.
   set "chrome_ok=1"
-  powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3; exit 0 } catch { exit 1 }"
+  powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 8; exit 0 } catch { exit 1 }"
   if errorlevel 1 (
-    echo [!date! !time!] Chrome debug port unreachable before "!kw!" - attempting one relaunch...
+    for /f %%c in ('tasklist /FI "IMAGENAME eq chrome.exe" /NH 2^>nul ^| find /c /v ""') do set "chromecount=%%c"
+    echo [!date! !time!] Chrome debug port unreachable before "!kw!" - attempting one relaunch... (chrome.exe processes: !chromecount!)
     start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%~dp0vinted_profile" "https://www.vinted.fr"
     timeout /t 12 >nul
-    powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 3; exit 0 } catch { exit 1 }"
+    powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 8; exit 0 } catch { exit 1 }"
     if errorlevel 1 (
       echo [!date! !time!] Chrome still unreachable - skipping "!kw!" this run.
       set "chrome_ok=0"
