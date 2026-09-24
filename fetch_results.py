@@ -189,8 +189,18 @@ def get_or_create_page(context, url: str | None = None):
 
 
 def get_cookies_and_token(context, page):
-    """Extract cookies and access token from the authenticated page."""
-    raw_cookies = context.cookies()
+    """Extract cookies and access token from the authenticated page.
+
+    context.cookies() with no argument returns EVERY cookie the browser has ever set, for
+    EVERY domain it has ever visited or had embedded (ad/tracker cookies from pixels on
+    Vinted's own pages included) - not just Vinted's. Live-observed 2026-09-22/23, after
+    weeks of continuous running: that jar grew large enough that the Cookie header on every
+    request (this dict is forwarded as-is to requests.get) tripped Vinted's server-side
+    header-size limit - "Error 431 ... body: ''", on .fr specifically, since that's the only
+    domain this cookie jar is used for (every other domain bootstraps its own small
+    anonymous session - see fetch_catalog_multi_domain). Scope to vinted's own cookies only.
+    """
+    raw_cookies = [c for c in context.cookies() if "vinted." in c.get("domain", "")]
     cookies_dict = {c["name"]: c["value"] for c in raw_cookies}
     access_token = cookies_dict.get("access_token_web", "")
 
@@ -2352,6 +2362,22 @@ def _demo() -> None:
         requests.get, globals()["human_delay"] = _real_get, _real_delay
     assert len(got) == 1 and calls["n"] == 2, (len(got), calls)
     assert calls["timeout"], "requests must carry a timeout"
+
+    # REGRESSION (live-observed 2026-09-22/23): context.cookies() with no filter returns cookies
+    # for EVERY domain the browser has ever visited (ad/tracker pixels on Vinted's own pages
+    # included) - after weeks of continuous running that grew large enough to trip Vinted's
+    # server-side header-size limit (Error 431). Only vinted's own cookies must survive.
+    class _FakeContext:
+        def cookies(self):
+            return [
+                {"name": "access_token_web", "value": "tok123", "domain": ".vinted.fr"},
+                {"name": "session", "value": "abc", "domain": "www.vinted.fr"},
+                {"name": "_ga", "value": "unrelated-tracker", "domain": ".doubleclick.net"},
+                {"name": "fbp", "value": "unrelated-tracker-2", "domain": ".facebook.com"},
+            ]
+    cookies, token = get_cookies_and_token(_FakeContext(), page=None)
+    assert token == "tok123", token
+    assert set(cookies) == {"access_token_web", "session"}, cookies
     print("fetch_results self-check OK: page-embedded item extraction + brand derivation")
 
 
