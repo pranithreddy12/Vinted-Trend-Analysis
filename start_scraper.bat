@@ -1,25 +1,30 @@
-﻿@echo off
-chcp 65001 >nul
+@echo off
+cd /d "%~dp0"
 
 echo ===============================
 echo   VINTED CDP MODE STARTING
 echo ===============================
 
-REM Kill Chrome
+REM Kill any existing Chrome so it starts cleanly with the debugging port.
 taskkill /F /IM chrome.exe >nul 2>&1
 
-REM Start Chrome with DEBUGGING (FIXED)
+REM %~dp0vinted_profile - relative to THIS script's own folder, so it works wherever this
+REM package is extracted. A hardcoded absolute path here (as this file used to have, since
+REM Phase 3) breaks on any machine but the one it was written on - it only "worked" for the
+REM client because run_tracker.bat's own recovery logic (already portable) quietly created
+REM the real, working profile instead. Keep both scripts pointed at the same portable path.
 start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" ^
 --remote-debugging-port=9222 ^
---user-data-dir="C:\Pranith\Freelancing_Projects\04-19-2026-leslie570-vinted_scraping_for_trend_analysis\Vinted\vinted_profile" ^
+--user-data-dir="%~dp0vinted_profile" ^
 "https://www.vinted.fr"
 
 timeout /t 8 >nul
 
 echo.
-echo Login if needed → then press any key...
+echo Log into Vinted in the Chrome window that just opened, then press any key here...
 pause
 
-python fetch_results.py
-
+echo.
+echo Done - Chrome is logged in and ready. Leave this Chrome window OPEN, then run
+echo run_tracker.bat (or wait for the scheduled task) to start tracking.
 pause
