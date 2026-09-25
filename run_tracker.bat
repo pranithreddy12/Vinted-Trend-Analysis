@@ -15,8 +15,11 @@ REM Bare "python" can resolve to a DIFFERENT install than the one with the proje
 REM installed (live-observed 2026-08-29: PATH put a numpy-less Python 3.14 ahead of the 3.11
 REM install everything was tested against, silently degrading numpy-dependent features).
 REM Pin to the known-good install; fall back to PATH resolution if it's not on this machine.
-set PYTHON=C:\Users\prani\AppData\Local\Programs\Python\Python311\python.exe
-if not exist "%PYTHON%" set PYTHON=python
+REM No machine-specific path here on purpose (dropped 2026-09-25 - it pointed at the
+REM freelancer's own dev machine and could never exist on the client's, so this always
+REM fell through to the line below anyway; harmless, but dead weight). Bare "python" is
+REM what setup.bat's own install targets, so it is the one guaranteed to have the deps.
+set PYTHON=python
 
 set VINTED_AUTOMATED=1
 set VINTED_TRACK_WORKERS=2
@@ -59,20 +62,25 @@ REM set VINTED_VISION_PROVIDER=anthropic
 REM set VINTED_DEDUP=1
 REM set VINTED_REFERENCE=1
 
-REM Confirm the logged-in debug-Chrome is up. If it is not - live-tested 2026-08-25: Chrome can
-REM silently die during a long unattended run, which used to fail the ENTIRE rest of the watch-
-REM list with no loud warning - try ONE relaunch on the same profile before giving up. A clean
-REM relaunch (no taskkill of other Chrome windows) preserves the saved login: verified live.
-REM TimeoutSec was 3 - too tight on a loaded/slower machine, live-observed 2026-09-22 firing
-REM before EVERY product (not the rare case this recovery was built for). 8s gives Chrome
-REM room to answer under load before we assume it's actually down.
-powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 8; exit 0 } catch { exit 1 }"
+REM Confirm the logged-in debug-Chrome is up. call :probe_chrome (defined at the bottom of
+REM this file) retries the check a few times first, so one transient blip doesn't trigger a
+REM needless restart - only act once it has genuinely failed repeatedly.
+call :probe_chrome
 if errorlevel 1 (
   for /f %%c in ('tasklist /FI "IMAGENAME eq chrome.exe" /NH 2^>nul ^| find /c /v ""') do set "chromecount=%%c"
-  echo [%date% %time%] Chrome debug port unreachable - attempting one relaunch... (chrome.exe processes: %chromecount%)
+  echo [%date% %time%] Chrome debug port unreachable - attempting one relaunch... ^(chrome.exe processes: %chromecount%^)
+  REM MUST kill any existing chrome.exe first. Live-confirmed 2026-09-25 (client report +
+  REM reproduced directly): if a Chrome process for this profile is already running,
+  REM launching another "chrome.exe ... --remote-debugging-port=... URL" is SILENTLY
+  REM IGNORED by Chrome's single-instance handling - it just opens a new tab in the SAME
+  REM window ("Opening in existing browser session"), the debug port is never actually
+  REM re-enabled, and every line here used to print "relaunched successfully" whether or
+  REM not anything was actually fixed. Killing first makes this a REAL relaunch.
+  taskkill /F /IM chrome.exe >nul 2>&1
+  timeout /t 2 >nul
   start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%~dp0vinted_profile" "https://www.vinted.fr"
   timeout /t 12 >nul
-  powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 8; exit 0 } catch { exit 1 }"
+  call :probe_chrome
   if errorlevel 1 (
     echo [%date% %time%] ERROR: Chrome still not running with the debugging port after a relaunch attempt.
     echo    Run start_scraper.bat, log into Vinted, and LEAVE Chrome open. Then retry.
@@ -114,13 +122,17 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt")
   REM of the batch — and on failure we SKIP this product rather than aborting the run,
   REM since Chrome may come back (or a later relaunch may succeed) for the next one.
   set "chrome_ok=1"
-  powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 8; exit 0 } catch { exit 1 }"
+  call :probe_chrome
   if errorlevel 1 (
     for /f %%c in ('tasklist /FI "IMAGENAME eq chrome.exe" /NH 2^>nul ^| find /c /v ""') do set "chromecount=%%c"
-    echo [!date! !time!] Chrome debug port unreachable before "!kw!" - attempting one relaunch... (chrome.exe processes: !chromecount!)
+    echo [!date! !time!] Chrome debug port unreachable before "!kw!" - attempting one relaunch... ^(chrome.exe processes: !chromecount!^)
+    REM See the top-of-script check for why the kill is required for this to be a real
+    REM relaunch rather than a silently-ignored no-op that just opens a spurious tab.
+    taskkill /F /IM chrome.exe >nul 2>&1
+    timeout /t 2 >nul
     start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%~dp0vinted_profile" "https://www.vinted.fr"
     timeout /t 12 >nul
-    powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 8; exit 0 } catch { exit 1 }"
+    call :probe_chrome
     if errorlevel 1 (
       echo [!date! !time!] Chrome still unreachable - skipping "!kw!" this run.
       set "chrome_ok=0"
@@ -160,3 +172,15 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt")
 endlocal
 echo [%date% %time%] === run complete === >> "%LOGFILE%"
 echo [%date% %time%] === run complete ===
+exit /b 0
+
+:probe_chrome
+REM Retries the debug-port check a few times (2s apart) before reporting failure, so one
+REM transient blip (machine briefly busy, a slow response) doesn't trigger a restart that
+REM was never actually needed. Returns via errorlevel: 0 = reachable, 1 = genuinely down.
+for /l %%i in (1,1,3) do (
+  powershell -NoProfile -Command "try { $null = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 8; exit 0 } catch { exit 1 }"
+  if not errorlevel 1 exit /b 0
+  timeout /t 2 >nul
+)
+exit /b 1
