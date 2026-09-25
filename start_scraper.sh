@@ -37,12 +37,11 @@ sleep 8
 
 echo ""
 echo "If Vinted asks you to log in, log in now (solve any captcha)."
-echo "Then come back here and press ENTER to start..."
+echo "Then come back here and press ENTER to finish..."
 read -r
 
-# Run the Phase 3 engine.
-python3 fetch_results.py
-
 echo ""
-echo "Finished. Press ENTER to close..."
+echo "Done - Chrome is logged in and ready. Leave this Chrome window OPEN, then run"
+echo "run_tracker.sh (or wait for the scheduled task) to start tracking."
+echo "Press ENTER to close..."
 read -r
