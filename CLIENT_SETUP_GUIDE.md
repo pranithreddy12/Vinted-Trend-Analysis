@@ -69,11 +69,23 @@ tracked. A few things to check:
 6. **Conditions tab** — this one matters if this is a laptop: **untick** "Start the task only
    if the computer is on AC power" and **untick** "Stop if the computer switches to battery
    power." If left ticked, the schedule silently stops running whenever the machine isn't
-   plugged in.
+   plugged in. Also **tick** "Wake the computer to run this task" — without this, if the
+   machine does end up asleep/hibernating for any reason, scheduled runs during that window
+   are silently skipped, not delayed.
 7. **Settings tab**: tick "If the task fails, restart every" 10 minutes, up to 3 times.
-8. Also check your **Windows power settings** (Settings → System → Power): set sleep to
-   **Never** while plugged in, and set "when I close the lid" to **Do nothing** if it's a
-   laptop. A sleeping machine can't run anything, scheduled or not.
+8. Set **both** sleep timers to Never — there are two separate ones, and Windows can
+   auto-hibernate even with the first one off:
+   - Settings → System → Power & Battery → set **Screen and sleep** → "When plugged in, put
+     my device to sleep" → **Never**.
+   - Then open **Control Panel → Power Options → Change plan settings → Change advanced power
+     settings**, expand **Sleep**, and set **both** "Sleep after" AND "Hibernate after" to
+     **Never (0)** — these are independent settings; disabling only the first one still lets
+     Windows hibernate the machine after a delay, which looks like the computer turned off but
+     silently skips every scheduled run until it's manually woken up. A telltale sign this is
+     happening: the machine appears completely off overnight, but everything (open windows,
+     Chrome tabs) is exactly as you left it when you turn it back on — that's Windows
+     restoring from hibernation, not a real shutdown.
+   - If it's a laptop, also set "when I close the lid" to **Do nothing**.
 
 ## 6. Run it once manually to confirm it works
 
