@@ -295,10 +295,16 @@ def _probe_until_clear(item_id: str) -> None:
     url = f"https://www.vinted.fr/items/{item_id}"
     consecutive_clear = 0
     for attempt in range(1, 41):  # cap the probing so it can't loop forever
+        if _cdp_dead():
+            print("   ⚠️  Chrome stopped accepting connections — releasing the hold.")
+            _release_hold()
+            return
         blocked = True
         try:
             with sync_playwright() as p:
-                browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                browser = _cdp_connect(p)
+                if browser is None:
+                    continue
                 page = browser.contexts[0].new_page()
                 try:
                     resp = page.goto(url, timeout=30000, wait_until="domcontentloaded")
@@ -1765,6 +1771,18 @@ def _demo() -> None:
         assert _verify_sold_worker("x") == ("x", "disappeared") and len(calls) == 5
         _note_cdp(True)
         assert not _cdp_dead()
+        # Rate-limit prober on a dead Chrome must give up and release the hold, not keep
+        # every worker frozen through 40 refresh attempts.
+        real_cd = globals()["_rate_limit_cooldown"]
+        globals()["_rate_limit_cooldown"] = lambda: 0
+        try:
+            assert _begin_hold_become_prober()
+            t0 = time.time()
+            _probe_until_clear("x")
+            assert not _rl_held and len(calls) == 10 and time.time() - t0 < 5, len(calls)
+        finally:
+            globals()["_rate_limit_cooldown"] = real_cd
+        _note_cdp(True)
     finally:
         sync_playwright, globals()["_wait_for_rate_limit"] = real_sp, real_wait
     print("track_sales self-check OK: verified 30d volume + 72h velocity + competition unscored"
