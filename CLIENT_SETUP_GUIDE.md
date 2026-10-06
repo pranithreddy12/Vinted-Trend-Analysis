@@ -43,8 +43,10 @@ the old one — see Step 6.
 
 1. Run `start_scraper.bat`.
 2. A Chrome window opens on vinted.fr. Log into your Vinted account in that window.
-3. **Leave that Chrome window open.** Don't close it — the tracker reconnects to this exact
-   window every time it runs.
+3. That's it — the login is saved in the `vinted_profile` folder. From now on the tracker
+   manages this Chrome itself: it restarts it fresh at the start of every run, and again
+   whenever it stops responding. It only ever closes **its own** Chrome window, never your
+   other Chrome windows. Don't use that window for your own browsing.
 
 ## 4. Check your product list
 
@@ -72,7 +74,12 @@ tracked. A few things to check:
    plugged in. Also **tick** "Wake the computer to run this task" — without this, if the
    machine does end up asleep/hibernating for any reason, scheduled runs during that window
    are silently skipped, not delayed.
-7. **Settings tab**: tick "If the task fails, restart every" 10 minutes, up to 3 times.
+7. **Settings tab**: tick "If the task fails, restart every" 10 minutes, up to 3 times. At
+   the bottom, set "If the task is already running, then the following rule applies" to
+   **Do not start a new instance**. (The tracker also protects itself: a full cycle can take
+   most of a day, and if a new start happens while a run is still going — scheduled or
+   manual — it simply skips itself and writes a line to `logs\skipped_starts.log`. That is
+   normal, not an error.)
 8. Set **both** sleep timers to Never — there are two separate ones, and Windows can
    auto-hibernate even with the first one off:
    - Settings → System → Power & Battery → set **Screen and sleep** → "When plugged in, put
@@ -107,8 +114,9 @@ That's real data coming in — good.
 
 | What you see | What it means | What to do |
 |---|---|---|
-| `Chrome debug port unreachable` appearing **once in a while** | Normal — Chrome recovers itself automatically | Nothing, this is expected occasionally |
-| `Chrome debug port unreachable` appearing **before almost every product**, every 20-40 seconds | Real instability, still being investigated | Send us the log |
+| `Chrome not accepting connections ... restarting Chrome` then `Chrome restarted successfully` **once in a while** | Normal — the tracker fixed Chrome by itself | Nothing |
+| `Could not connect to Chrome on port 9222` on **many products in a row** | Chrome can't be restarted (e.g. Chrome missing, or logged out) | Run `start_scraper.bat`, log in again, send us the log |
+| Lines in `logs\skipped_starts.log` | A start happened while the previous run was still going, so it skipped itself | Nothing — normal |
 | `Error 431` | A bug we already fixed (cookie buildup) — should not appear if you're on the current files | If it still appears, send us the log |
 | `Error 404` for every product | The catalog endpoint would be broken — already fixed, should not appear | If it still appears, send us the log immediately, this blocks everything |
 | The run ends with `=== run complete ===` | The full cycle finished | Good sign |
@@ -143,8 +151,8 @@ Only do this once steps 1-6 are working cleanly.
 
 Once everything is running on its own schedule, check in on it every few days:
 
-- **Is Chrome still open?** If it got closed (accidentally, or by a restart), runs will skip
-  themselves safely but collect nothing until you run `start_scraper.bat` again and log back in.
+- **Chrome**: you don't need to keep it open yourself — every run starts it fresh. Only if
+  Vinted logs you out do you need to run `start_scraper.bat` and log in again.
 - **Are new files appearing in the `logs` folder** roughly every 4-6 hours? If not, Task
   Scheduler may have stopped — check Task Scheduler's history for that task.
 - **Open the newest log occasionally** and skim for the red flags in the table above.

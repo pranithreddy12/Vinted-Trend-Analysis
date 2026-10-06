@@ -5,8 +5,10 @@ echo ===============================
 echo   VINTED CDP MODE STARTING
 echo ===============================
 
-REM Kill any existing Chrome so it starts cleanly with the debugging port.
-taskkill /F /IM chrome.exe >nul 2>&1
+REM Close only the tracker's own Chrome (vinted_profile) so it restarts cleanly with the
+REM debugging port. Your other Chrome windows are left alone.
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | Where-Object { $_.CommandLine -like '*vinted_profile*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+timeout /t 2 >nul
 
 REM %~dp0vinted_profile - relative to THIS script's own folder, so it works wherever this
 REM package is extracted. A hardcoded absolute path here (as this file used to have, since
@@ -25,6 +27,7 @@ echo Log into Vinted in the Chrome window that just opened, then press any key h
 pause
 
 echo.
-echo Done - Chrome is logged in and ready. Leave this Chrome window OPEN, then run
-echo run_tracker.bat (or wait for the scheduled task) to start tracking.
+echo Done - you are logged in. The login is saved in the vinted_profile folder, so the
+echo tracker can restart this Chrome by itself. Run run_tracker.bat (or wait for the
+echo scheduled task) to start tracking.
 pause

@@ -1140,10 +1140,14 @@ def _publish_ts_worker(item_id: str):
     rate-limit page pauses all tabs and retries the same item.
     """
     for _attempt in range(3):
+        if _cdp_dead():
+            return item_id, None
         _wait_for_rate_limit()  # hold if a global cooldown is active
         try:
             with sync_playwright() as p:
-                browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                browser = _cdp_connect(p)
+                if browser is None:
+                    return item_id, None
                 context = browser.contexts[0]
                 page = context.new_page()
                 try:
@@ -1161,6 +1165,35 @@ def _publish_ts_worker(item_id: str):
         except Exception:
             return item_id, None
     return item_id, None
+
+
+# Circuit breaker: once Chrome stops accepting CDP connections, every remaining item would
+# wait out its own connect timeout (live-observed 2026-10-05: 0/300 captured over ~16h).
+# After N consecutive connect failures, workers return immediately so the product finishes
+# fast and run_tracker.bat restarts Chrome before the next one.
+_cdp_lock = threading.Lock()
+_cdp_fails = 0
+
+
+def _cdp_dead() -> bool:
+    return _cdp_fails >= int(os.environ.get("VINTED_CDP_FAIL_LIMIT", "5"))
+
+
+def _note_cdp(ok: bool) -> None:
+    global _cdp_fails
+    with _cdp_lock:
+        _cdp_fails = 0 if ok else _cdp_fails + 1
+
+
+def _cdp_connect(p):
+    """connect_over_cdp that feeds the circuit breaker; None if it failed."""
+    try:
+        browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222", timeout=30000)
+    except Exception:
+        _note_cdp(False)
+        return None
+    _note_cdp(True)
+    return browser
 
 
 def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
@@ -1219,6 +1252,9 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
 
     save_tracking(path, tracking)
     print(f"   → publish time captured for {captured}/{len(todo)} listings")
+    if _cdp_dead():
+        print("   ⚠️  Chrome stopped accepting connections — stopped early (progress saved); "
+              "Chrome will be restarted before the next product.")
     return captured
 
 
@@ -1259,10 +1295,14 @@ def _verify_sold_worker(item_id: str):
     """Thread worker mirroring _publish_ts_worker: own tab over CDP, verify one listing's
     real sold status, respect the shared rate-limit back-off."""
     for _attempt in range(3):
+        if _cdp_dead():
+            return item_id, "disappeared"
         _wait_for_rate_limit()
         try:
             with sync_playwright() as p:
-                browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                browser = _cdp_connect(p)
+                if browser is None:
+                    return item_id, "disappeared"
                 context = browser.contexts[0]
                 page = context.new_page()
                 try:
@@ -1327,6 +1367,8 @@ def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2
     save_tracking(path, tracking)
     print(f"   → confirmed sold: {tally['sold']} · removed: {tally['removed']} · "
           f"relisted/active: {tally['active']} · unverified: {tally['disappeared']}")
+    if _cdp_dead():
+        print("   ⚠️  Chrome stopped accepting connections — unverified ones retry next run.")
     return dict(tally)
 
 
@@ -1694,7 +1736,39 @@ def _demo() -> None:
     assert fast["score"] > slow["score"], (fast, slow)
     maxed = compute_variant_opportunity(est_sales_30d=40, median_days=1, offers_total=25, offers_measured=True)
     assert maxed == {"score": 100, "verdict": "🚀 High Resale Opportunity"}, maxed
-    print("track_sales self-check OK: verified 30d volume + 72h velocity + competition unscored")
+
+    # CDP circuit breaker: a degraded Chrome (every connect times out) must stop the item loop
+    # after a few attempts, not burn one timeout per item (live: 0/300 over ~16h, 2026-10-05).
+    global sync_playwright
+    calls = []
+
+    class _Chromium:
+        def connect_over_cdp(self, *a, **k):
+            calls.append(1)
+            raise TimeoutError("simulated degraded Chrome")
+
+    class _P:
+        chromium = _Chromium()
+
+    class _SP:
+        def __enter__(self):
+            return _P()
+
+        def __exit__(self, *a):
+            return False
+
+    real_sp, real_wait = sync_playwright, globals()["_wait_for_rate_limit"]
+    sync_playwright, globals()["_wait_for_rate_limit"] = (lambda: _SP()), (lambda: None)
+    try:
+        assert all(_publish_ts_worker(str(i)) == (str(i), None) for i in range(40))
+        assert len(calls) == 5 and _cdp_dead(), len(calls)
+        assert _verify_sold_worker("x") == ("x", "disappeared") and len(calls) == 5
+        _note_cdp(True)
+        assert not _cdp_dead()
+    finally:
+        sync_playwright, globals()["_wait_for_rate_limit"] = real_sp, real_wait
+    print("track_sales self-check OK: verified 30d volume + 72h velocity + competition unscored"
+          " + CDP circuit breaker")
 
 
 if __name__ == "__main__":
