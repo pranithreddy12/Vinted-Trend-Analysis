@@ -1202,6 +1202,19 @@ def _cdp_connect(p):
     return browser
 
 
+def _enrich_queue(tracking: dict, cap) -> list:
+    """Active listings still missing a publish time, NEWEST first-seen first, capped.
+    Oldest-first (the old order) was survivorship-biased: with a backlog far larger than the
+    per-run cap, only listings that had stayed up for weeks ever reached the front, while fast
+    sellers vanished before being enriched - so measured time-to-sell skewed slow (client logs
+    2026-10-09: 0 of 64 smeg / 0 of 46 owala measured sales under 48h; in local data, sold
+    listings WITHOUT a publish time vanished within 48h 29% of the time vs 1% with one)."""
+    todo = [iid for iid, row in tracking.items()
+            if row["status"] == "active" and not row.get("created_at_ts")]
+    todo.sort(key=lambda iid: tracking[iid].get("first_seen", ""), reverse=True)
+    return todo[: int(cap)] if cap else todo
+
+
 def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
     """
     Fill in publish time for active listings missing it, loading item pages across
@@ -1209,14 +1222,7 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
     Progress is checkpointed so a long backfill is interruptible/resumable.
     Cap per run with VINTED_MAX_ENRICH. Returns how many were captured this run.
     """
-    todo = [
-        iid
-        for iid, row in tracking.items()
-        if row["status"] == "active" and not row.get("created_at_ts")
-    ]
-    cap = os.environ.get("VINTED_MAX_ENRICH")
-    if cap:
-        todo = todo[: int(cap)]
+    todo = _enrich_queue(tracking, os.environ.get("VINTED_MAX_ENRICH"))
     if not todo:
         return 0
     workers = int(os.environ.get("VINTED_TRACK_WORKERS", workers))
@@ -1742,6 +1748,17 @@ def _demo() -> None:
     assert fast["score"] > slow["score"], (fast, slow)
     maxed = compute_variant_opportunity(est_sales_30d=40, median_days=1, offers_total=25, offers_measured=True)
     assert maxed == {"score": 100, "verdict": "🚀 High Resale Opportunity"}, maxed
+
+    # Enrichment queue: newest first-seen first, only active + still missing a publish time.
+    q = {
+        "old": {"status": "active", "created_at_ts": "", "first_seen": "2026-09-01 10:00:00"},
+        "new": {"status": "active", "created_at_ts": "", "first_seen": "2026-10-09 03:00:00"},
+        "mid": {"status": "active", "created_at_ts": "", "first_seen": "2026-09-20 10:00:00"},
+        "done": {"status": "active", "created_at_ts": "123", "first_seen": "2026-10-09 04:00:00"},
+        "gone": {"status": "sold", "created_at_ts": "", "first_seen": "2026-10-09 05:00:00"},
+    }
+    assert _enrich_queue(q, None) == ["new", "mid", "old"], _enrich_queue(q, None)
+    assert _enrich_queue(q, "2") == ["new", "mid"]
 
     # CDP circuit breaker: a degraded Chrome (every connect times out) must stop the item loop
     # after a few attempts, not burn one timeout per item (live: 0/300 over ~16h, 2026-10-05).
