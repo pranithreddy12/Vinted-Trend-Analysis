@@ -47,11 +47,18 @@ def snapshot_series(slug: str, max_days: int = 21) -> dict:
 def momentum(series: list) -> float:
     """Relative growth across the snapshot window: least-squares slope of est-sales over time,
     normalised by the mean level → e.g. 0.4 ≈ +40% trend across the window, -0.3 ≈ cooling.
-    Returns 0.0 when there's too little history (<2 points) or a flat/zero series."""
-    n = len(series)
-    if n < 2:
-        return 0.0
+    Returns 0.0 when there's too little history or a flat/zero series.
+
+    Leading zero snapshots are dropped (before the first verified sale there's no baseline —
+    client log 2026-10-09: every variant read "rising +100%" because verification had only just
+    started, so 0 → anything saturated the cap), and 3+ real points are needed: two points
+    are one delta, not a trend."""
     ys = [e for _, e in series]
+    while ys and ys[0] <= 0:
+        ys.pop(0)
+    n = len(ys)
+    if n < 3:
+        return 0.0
     xs = list(range(n))
     mx = sum(xs) / n
     my = sum(ys) / n
@@ -135,8 +142,8 @@ def print_top(ranked: list, n: int = 10) -> None:
     for i, v in enumerate(ranked[:n], 1):
         name = v.get("ai_product") or v.get("product") or v.get("variant")
         print(f"{i:2}. [{v['discovery_score']:3}] {name}  — {v['reason']}")
-    if ranked and all(v.get("history_points", 0) < 2 for v in ranked):
-        print("  ⏳ momentum builds as daily history accumulates (needs ≥2 days of snapshots)")
+    if ranked and all(v.get("history_points", 0) < 3 for v in ranked):
+        print("  ⏳ momentum builds as daily history accumulates (needs ≥3 days of snapshots)")
 
 
 def explain(v: dict) -> list:
@@ -209,22 +216,21 @@ def _demo() -> None:
     """Self-check (no I/O): momentum direction + magnitude, and momentum lifting the rank."""
     assert momentum([("d1", 10), ("d2", 20), ("d3", 30)]) > 0.5, "rising series"
     assert momentum([("d1", 30), ("d2", 20), ("d3", 10)]) < 0, "declining series"
-    assert momentum([("d1", 20), ("d2", 20)]) == 0.0, "flat series"
+    assert momentum([("d1", 20), ("d2", 20), ("d3", 20)]) == 0.0, "flat series"
+    assert momentum([("d1", 10), ("d2", 30)]) == 0.0, "two points = one delta, not a trend"
     assert momentum([("d1", 20)]) == 0.0, "single point = unknown"
-    # REGRESSION: live-observed "0, 0, 8.7" series computed +300% momentum — mathematically
-    # valid (dividing by a near-zero mean amplifies a tiny move) but absurd to SHOW a client as
-    # "rising +300%" when it's really just the first sale after a near-empty ramp-up. The raw
-    # momentum() value can still be large (only the displayed % is capped, in rank_opportunities);
-    # this asserts the underlying pathology is real so the cap has something to guard against.
-    assert momentum([("d1", 0.0), ("d2", 0.0), ("d3", 8.7)]) > 2.0, "near-zero-baseline pathology"
+    # REGRESSION: live-observed "0, 0, 8.7" (and, 2026-10-09, 0 → x on EVERY variant once
+    # verification started) read as "rising +100/300%". Leading zeros are no baseline → 0.
+    assert momentum([("d1", 0.0), ("d2", 0.0), ("d3", 8.7)]) == 0.0, "ramp-up is not momentum"
+    assert momentum([("d1", 0.0), ("d2", 5.0), ("d3", 8.0), ("d4", 12.0)]) > 0.3, "real growth after ramp-up"
     _orig_series = snapshot_series
     globals()["snapshot_series"] = lambda slug, max_days=21: {
         "x": [("d1", 0.0), ("d2", 0.0), ("d3", 8.7)]}
     try:
         ranked = rank_opportunities(
             [{"variant": "x", "score": 10, "est_sales_30d": 8.7}], slug="whatever")
-        assert ranked[0]["momentum_pct"] == 100, \
-            f"display must be capped at 100, got {ranked[0]['momentum_pct']}"
+        assert ranked[0]["momentum_pct"] == 0, \
+            f"ramp-up must not display as momentum, got {ranked[0]['momentum_pct']}"
     finally:
         globals()["snapshot_series"] = _orig_series
     v = {"score": 50}

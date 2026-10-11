@@ -358,11 +358,27 @@ COLOR_BUCKETS = {
 }
 
 
+# Two-word shades the structured colour attribute returns ("Bleu clair"). Kept distinct from
+# plain blue/green (a light-blue Smeg is its own product) but unified across languages.
+_SHADES = {
+    "bleu clair": "light blue", "bleu ciel": "light blue", "light blue": "light blue",
+    "lichtblauw": "light blue", "hellblau": "light blue", "azul claro": "light blue",
+    "bleu foncé": "dark blue", "bleu fonce": "dark blue", "dark blue": "dark blue",
+    "donkerblauw": "dark blue", "dunkelblau": "dark blue",
+    "vert foncé": "dark green", "vert fonce": "dark green", "dark green": "dark green",
+    "donkergroen": "dark green", "dunkelgrün": "dark green",
+    "vert clair": "light green", "light green": "light green",
+    "lichtgroen": "light green", "hellgrün": "light green",
+    "rose clair": "light pink", "light pink": "light pink",
+    "rose foncé": "dark pink", "dark pink": "dark pink",
+}
+
+
 def normalize_color(color: str) -> str:
     if not color:
         return ""
     first = color.split(",")[0].strip().lower()
-    return COLOR_BUCKETS.get(first, first)
+    return _SHADES.get(first) or COLOR_BUCKETS.get(first, first)
 
 
 # Known bottle sizes → canonical label. A listing's capacity is converted to
@@ -372,7 +388,7 @@ def normalize_color(color: str) -> str:
 # are all the same product.) Sizes outside tolerance keep a rounded-litre label.
 _CANONICAL_SIZES_ML = [
     (414, "14oz"), (473, "16oz"), (591, "20oz"), (709, "24oz"),
-    (887, "30oz"), (1183, "40oz"), (1419, "48oz"), (1892, "64oz"),
+    (887, "30oz"), (946, "32oz"), (1183, "40oz"), (1419, "48oz"), (1892, "64oz"),
 ]
 _CAP_UNIT_TO_ML = {"oz": 29.5735, "l": 1000.0, "cl": 10.0, "ml": 1.0}
 _CAP_PARSE_RE = re.compile(r"^(\d+(?:[.,]\d+)?)(l|oz|ml|cl)$")
@@ -430,11 +446,24 @@ def detect_model(title: str) -> str:
     return ""
 
 
+def _is_stanley(row: dict) -> bool:
+    """The product-line patterns above are Stanley's. A row whose catalog brand is another
+    brand (Owala/Smeg/Jellycat…) must not get a Stanley line from a title that merely says
+    'quencher' (client log 2026-10-09: 'quencher pink' High(53) inside the Owala report).
+    Unknown brand stays eligible — bare titles are common."""
+    b = (row.get("brand") or "").lower()
+    return not b or "stanley" in b
+
+
+def _row_model(row: dict) -> str:
+    return detect_model(row.get("title", "")) if _is_stanley(row) else ""
+
+
 # oz→metric companion for the display label, so the client sees both units at once
 # (he referred to sizes in both, e.g. "40oz" and "1.18L").
 _CAP_METRIC = {
     "14oz": "0.41L", "16oz": "0.47L", "20oz": "0.59L", "24oz": "0.71L",
-    "30oz": "0.89L", "40oz": "1.18L", "48oz": "1.42L", "64oz": "1.9L",
+    "30oz": "0.89L", "32oz": "0.95L", "40oz": "1.18L", "48oz": "1.42L", "64oz": "1.9L",
 }
 
 
@@ -632,7 +661,9 @@ def variant_trend(cur_est: float, prev_est) -> str:
     if prev_est is None:
         return "Building"  # no prior snapshot yet
     if prev_est <= 0:
-        return "Increasing" if cur_est > 0 else "Stable"
+        # No baseline: 0 → first sales is a ramp-up, not growth (every variant read "Increasing"
+        # in the client's 2026-10-09 log, right after sold-verification started).
+        return "Building" if cur_est > 0 else "Stable"
     ratio = cur_est / prev_est
     if ratio >= 1.2:
         return "Increasing"
@@ -816,7 +847,7 @@ def variant_analysis(
         base = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""), r.get("size", ""))
         if not base:
             continue
-        m = detect_model(r.get("title", ""))
+        m = _row_model(r)
         if m:
             model_votes.setdefault(base, collections.Counter())[m] += 1
     dominant_model = {
@@ -827,7 +858,7 @@ def variant_analysis(
     for r in tracking.values():
         base = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""), r.get("size", ""))
         if base:
-            model = detect_model(r.get("title", "")) or dominant_model.get(base, "")
+            model = _row_model(r) or dominant_model.get(base, "") if _is_stanley(r) else ""
             v = f"{model.lower()} {base}".strip() if model else base
         else:
             # Phase 5 fallback: no text variant — group by what the PHOTO shows.
@@ -1242,6 +1273,12 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
             except Exception:
                 info = None
             done += 1
+            if _cdp_dead():
+                # Chrome is gone: drop what hasn't started instead of grinding through the
+                # queue (the "stopped early" note below used to print after 300/300).
+                for f in future_to_id:
+                    f.cancel()
+                break
             if info:
                 row = tracking[iid]
                 if info.get("created_at_ts"):
@@ -1265,8 +1302,8 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
     save_tracking(path, tracking)
     print(f"   → publish time captured for {captured}/{len(todo)} listings")
     if _cdp_dead():
-        print("   ⚠️  Chrome stopped accepting connections — stopped early (progress saved); "
-              "Chrome will be restarted before the next product.")
+        print(f"   ⚠️  Chrome stopped accepting connections — stopped early at {done}/{len(todo)} "
+              "(progress saved); Chrome will be restarted before the next product.")
     return captured
 
 
@@ -1369,6 +1406,9 @@ def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2
                     row["status"] = "active"
                     row["disappeared_at"] = row["lifespan_hours"] = row["hours_tracked"] = ""
                     row["sale_confirmed"] = ""
+                    # Else a listing that's live but missing from search is re-verified EVERY
+                    # run (missed_runs stays >= DISAPPEARANCE_RUNS), eating the verify cap.
+                    row["missed_runs"] = 0
                 else:
                     row["sale_confirmed"] = False   # unverified — stays "disappeared", not a sale
             tally[outcome] += 1
@@ -1399,6 +1439,10 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
     print("=" * 60)
     print(f"  Tracked (all time):   {total}")
     print(f"  Currently active:     {active}")
+    pending = sum(1 for r in tracking.values()
+                  if r["status"] == "active" and int(r.get("missed_runs") or 0) > 0)
+    if pending:
+        print(f"    (of which {pending} missing from this run's search, awaiting confirmation)")
     if _verify_sold_on():
         # Verified mode: report confirmed sales separately from removed / unverified, so a
         # disappearance is never presented as a sale.
