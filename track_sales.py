@@ -369,6 +369,10 @@ _SHADES = {
     "donkergroen": "dark green", "dunkelgrün": "dark green",
     "vert clair": "light green", "light green": "light green",
     "lichtgroen": "light green", "hellgrün": "light green",
+    "argenté": "silver", "argente": "silver", "silver": "silver", "zilver": "silver",
+    "silber": "silver",
+    "multicolore": "multicolour", "multicolor": "multicolour", "multicolour": "multicolour",
+    "meerkleurig": "multicolour", "mehrfarbig": "multicolour",
     "rose clair": "light pink", "light pink": "light pink",
     "rose foncé": "dark pink", "dark pink": "dark pink",
 }

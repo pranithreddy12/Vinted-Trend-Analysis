@@ -14,13 +14,13 @@ stanley quencher
 stanley iceflow
 stanley loveshackfancy
 
-# ---- Smeg ----  (kept specific: "smeg bottle" alone also pulls Smeg kitchen appliances)
-smeg insulated bottle
+# ---- Smeg ---- (one line: "smeg insulated bottle" and "smeg tumbler" both search "smeg" and
+# returned ~76% the same listings, so they were tracked twice. "smeg tumbler" keeps the history.)
 smeg tumbler
 
-# ---- Owala ---- (split like Smeg: a generic "owala bottle" search blends two distinct lines)
+# ---- Owala ---- (one line: the separate "owala insulated bottle" search overlapped the
+# "owala bottle" listings, so it was tracked twice. "owala bottle" keeps the history.)
 owala bottle
-owala insulated bottle
 
 # ---- Alo Yoga ----
 alo yoga set
