@@ -76,6 +76,12 @@ def _fmt(dt: datetime) -> str:
     return dt.strftime(TS_FMT)
 
 
+def _hm() -> str:
+    """Local [HH:MM] stamp for phase lines (run logs had none between START and END, so a
+    15 h stall in the client log 2026-10-12 could not be located)."""
+    return datetime.now().strftime("[%H:%M]")
+
+
 def _parse(s: str) -> datetime:
     return datetime.strptime(s, TS_FMT).replace(tzinfo=timezone.utc)
 
@@ -209,6 +215,18 @@ def extract_publish_ts_from_html(html: str) -> int | None:
     if not ts:
         return None
     return collections.Counter(ts).most_common(1)[0][0]
+
+
+def _page_photo_ts(html: str, now_ts: float | None = None) -> int | None:
+    """extract_publish_ts_from_html, but only a believable value (not future, < 3 years old)."""
+    ts = extract_publish_ts_from_html(html)
+    now_ts = now_ts or time.time()
+    return ts if ts and now_ts - 3 * 365 * 86400 <= ts <= now_ts + 3600 else None
+
+
+# How the publish time was obtained this run: agree/differ = API-or-span value vs the page's
+# photo timestamps (a live cross-check of the fallback); fallback = filled from photos only.
+_ts_src = collections.Counter()
 
 
 # ── Shared rate-limit back-off across all worker tabs ──
@@ -1160,6 +1178,16 @@ def _publish_ts_from_page(page, item_id: str) -> dict:
                     info["created_at_ts"] = int(pub.timestamp())
             except Exception:
                 pass
+        # Client logs 2026-10-09/12: only ~40% of item pages yielded a publish time (API
+        # intercept / span both silently missing), so fast sellers vanished un-enriched. The
+        # photo-timestamp parse above was written for exactly this but never wired in.
+        html_ts = _page_photo_ts(html)
+        if html_ts:
+            if info["created_at_ts"]:
+                _ts_src["agree" if abs(html_ts - info["created_at_ts"]) <= 86400 else "differ"] += 1
+            else:
+                info["created_at_ts"] = html_ts
+                _ts_src["fallback"] += 1
     except RateLimited:
         raise
     except Exception:
@@ -1261,7 +1289,7 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
     if not todo:
         return 0
     workers = int(os.environ.get("VINTED_TRACK_WORKERS", workers))
-    print(f"\n⏳ Capturing publish time for {len(todo)} listings via {workers} parallel tabs...")
+    print(f"\n{_hm()} ⏳ Capturing publish time for {len(todo)} listings via {workers} parallel tabs...")
     print("   (progress is saved as it goes — safe to stop and resume next run)")
 
     captured = 0
@@ -1304,7 +1332,10 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
                 save_tracking(path, tracking)  # checkpoint from the main thread
 
     save_tracking(path, tracking)
-    print(f"   → publish time captured for {captured}/{len(todo)} listings")
+    print(f"   {_hm()} → publish time captured for {captured}/{len(todo)} listings")
+    if _ts_src:
+        print(f"     (page-photo cross-check: {_ts_src['agree']} agree · {_ts_src['differ']} differ "
+              f"· {_ts_src['fallback']} filled from photos only)")
     if _cdp_dead():
         print(f"   ⚠️  Chrome stopped accepting connections — stopped early at {done}/{len(todo)} "
               "(progress saved); Chrome will be restarted before the next product.")
@@ -1388,7 +1419,7 @@ def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2
     if cap:
         ids = ids[: int(cap)]
     workers = int(os.environ.get("VINTED_TRACK_WORKERS", workers))
-    print(f"\n🔎 Verifying sold status of {len(ids)} disappeared listings via {workers} tabs "
+    print(f"\n{_hm()} 🔎 Verifying sold status of {len(ids)} disappeared listings via {workers} tabs "
           f"(a disappearance is not a sale until Vinted confirms it)...")
     tally = collections.Counter()
     done = 0
@@ -1421,7 +1452,7 @@ def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2
                 print(f"   ...{done}/{len(ids)} verified")
                 save_tracking(path, tracking)
     save_tracking(path, tracking)
-    print(f"   → confirmed sold: {tally['sold']} · removed: {tally['removed']} · "
+    print(f"   {_hm()} → confirmed sold: {tally['sold']} · removed: {tally['removed']} · "
           f"relisted/active: {tally['active']} · unverified: {tally['disappeared']}")
     if _cdp_dead():
         print("   ⚠️  Chrome stopped accepting connections — unverified ones retry next run.")
@@ -1439,7 +1470,7 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
     active = st["active"]
 
     print("\n" + "=" * 60)
-    print(f"📦 SALES TRACKING — {keyword}")
+    print(f"{_hm()} 📦 SALES TRACKING — {keyword}")
     print("=" * 60)
     print(f"  Tracked (all time):   {total}")
     print(f"  Currently active:     {active}")
@@ -1648,7 +1679,7 @@ def main():
                 print(f"   🎯 relevance: {tiers.get(1,0)} exact · {tiers.get(2,0)} "
                       f"same-family · {tiers.get(3,0)} same-brand · dropped "
                       f"{tiers.get(4,0)} off-brand")
-        print(f"   → {len(raw)} active listings right now")
+        print(f"   {_hm()} → {len(raw)} active listings right now")
     # Auth session closed; the enrichment workers open their own CDP connections.
 
     now = datetime.now(timezone.utc)
@@ -1807,6 +1838,13 @@ def _demo() -> None:
     }
     assert _enrich_queue(q, None) == ["new", "mid", "old"], _enrich_queue(q, None)
     assert _enrich_queue(q, "2") == ["new", "mid"]
+
+    # Page-photo publish-time fallback: mode of the photo timestamps, sanity-windowed.
+    assert _page_photo_ts('"timestamp":1760000000 "timestamp":1760000000 "timestamp":1700000000',
+                          now_ts=1760100000) == 1760000000
+    assert _page_photo_ts('"timestamp":1760000000', now_ts=1900000000) is None   # >3y old
+    assert _page_photo_ts('"timestamp":1770000000', now_ts=1760000000) is None   # future
+    assert _page_photo_ts("no timestamps here") is None
 
     # CDP circuit breaker: a degraded Chrome (every connect times out) must stop the item loop
     # after a few attempts, not burn one timeout per item (live: 0/300 over ~16h, 2026-10-05).
