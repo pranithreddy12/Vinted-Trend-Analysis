@@ -525,15 +525,22 @@ def fetch_catalog_multi_domain(
             if not dcookies:
                 print(f"  ⚠️  skipping .{domain} — anonymous session failed")
                 continue
-        items = fetch_catalog_via_requests(
-            keyword,
-            dcookies,
-            dtoken,
-            max_pages=max_pages,
-            catalog_id=catalog_id,
-            stop_when_old_ratio=stop_when_old_ratio,
-            domain=domain,
-        )
+        def _fetch(dc=dcookies, dt=dtoken, d=domain):
+            return fetch_catalog_via_requests(
+                keyword, dc, dt, max_pages=max_pages, catalog_id=catalog_id,
+                stop_when_old_ratio=stop_when_old_ratio, domain=d,
+            )
+
+        items = _fetch()
+        if not items:
+            # Client log 2026-10-13: ".fr: 0 items" (200 OK, nothing parsed) while the other nine
+            # domains returned ~690 each. A silent zero reads as "every FR listing vanished" and
+            # queues them all for sold-verification. One patient retry before accepting it.
+            print(f"  ⚠️  .{domain} returned 0 items — retrying once after a pause")
+            time.sleep(random.uniform(20, 40))
+            items = _fetch()
+            if not items:
+                print(f"  ⚠️  .{domain} still 0 items — its listings may look 'missing' this run")
         new = 0
         for it in items:
             iid = it.get("id")

@@ -30,7 +30,7 @@ import random
 import threading
 import collections
 import statistics
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
 from datetime import datetime, timezone, timedelta
 
 from playwright.sync_api import sync_playwright
@@ -1254,6 +1254,32 @@ def _note_cdp(ok: bool) -> None:
         _cdp_fails = 0 if ok else _cdp_fails + 1
 
 
+# Stall watchdog. Client log 2026-10-13: the run stopped writing at 14:30, 100/124 into sold
+# verification, and the task still read 'running' hours later (and a 15 h smeg tumbler run on
+# 10-12 looked the same). A worker blocked inside Playwright never returns, so as_completed()
+# - and the executor's own shutdown - waited forever. If NO item finishes for VINTED_STALL_SECS,
+# treat Chrome as hung: stop the phase, mark it dead so later phases skip, keep saved progress.
+_STALLED = False
+
+
+def _as_completed_or_stall(futures):
+    global _cdp_fails, _STALLED
+    pending = set(futures)
+    limit = int(os.environ.get('VINTED_STALL_SECS', '300'))
+    while pending:
+        done, pending = wait(pending, timeout=limit, return_when=FIRST_COMPLETED)
+        if not done:
+            print(f'   WARNING {_hm()} no item finished in {limit}s - Chrome looks hung; '
+                  f'stopping this step ({len(pending)} left, progress saved).')
+            for f in pending:
+                f.cancel()
+            with _cdp_lock:
+                _cdp_fails = 10 ** 6
+            _STALLED = True
+            return
+        yield from done
+
+
 def _cdp_connect(p):
     """connect_over_cdp that feeds the circuit breaker; None if it failed."""
     try:
@@ -1294,11 +1320,12 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
 
     captured = 0
     done = 0
-    with ThreadPoolExecutor(max_workers=workers) as executor:
+    executor = ThreadPoolExecutor(max_workers=workers)
+    try:
         future_to_id = {
             executor.submit(_publish_ts_worker, iid): iid for iid in todo
         }
-        for future in as_completed(future_to_id):
+        for future in _as_completed_or_stall(future_to_id):
             iid = future_to_id[future]
             try:
                 _id, info = future.result()
@@ -1331,6 +1358,8 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
                 print(f"   ...{done}/{len(todo)} ({captured} captured)")
                 save_tracking(path, tracking)  # checkpoint from the main thread
 
+    finally:
+        executor.shutdown(wait=not _STALLED, cancel_futures=True)
     save_tracking(path, tracking)
     print(f"   {_hm()} → publish time captured for {captured}/{len(todo)} listings")
     if _ts_src:
@@ -1423,9 +1452,10 @@ def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2
           f"(a disappearance is not a sale until Vinted confirms it)...")
     tally = collections.Counter()
     done = 0
-    with ThreadPoolExecutor(max_workers=workers) as executor:
+    executor = ThreadPoolExecutor(max_workers=workers)
+    try:
         futures = {executor.submit(_verify_sold_worker, iid): iid for iid in ids}
-        for future in as_completed(futures):
+        for future in _as_completed_or_stall(futures):
             iid = futures[future]
             try:
                 _id, outcome = future.result()
@@ -1451,6 +1481,8 @@ def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2
             if done % 25 == 0:
                 print(f"   ...{done}/{len(ids)} verified")
                 save_tracking(path, tracking)
+    finally:
+        executor.shutdown(wait=not _STALLED, cancel_futures=True)
     save_tracking(path, tracking)
     print(f"   {_hm()} → confirmed sold: {tally['sold']} · removed: {tally['removed']} · "
           f"relisted/active: {tally['active']} · unverified: {tally['disappeared']}")
@@ -1888,6 +1920,29 @@ def _demo() -> None:
         _note_cdp(True)
     finally:
         sync_playwright, globals()["_wait_for_rate_limit"] = real_sp, real_wait
+    # Stall watchdog: a worker that never returns must not hold the phase (and the process)
+    # hostage - after VINTED_STALL_SECS with no completion it stops, flags Chrome dead.
+    global _STALLED
+    import threading as _th
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    _gate = _th.Event()
+    _ex = _TPE(1)
+    _futs = {_ex.submit(_gate.wait): 1}
+    _old = os.environ.get('VINTED_STALL_SECS')
+    os.environ['VINTED_STALL_SECS'] = '1'
+    try:
+        t0 = time.time()
+        assert list(_as_completed_or_stall(_futs)) == [] and _STALLED and _cdp_dead()
+        assert time.time() - t0 < 5
+    finally:
+        _gate.set()
+        _ex.shutdown(wait=True)
+        _STALLED = False
+        _note_cdp(True)
+        if _old is None:
+            os.environ.pop('VINTED_STALL_SECS', None)
+        else:
+            os.environ['VINTED_STALL_SECS'] = _old
     print("track_sales self-check OK: verified 30d volume + 72h velocity + competition unscored"
           " + CDP circuit breaker")
 
@@ -1897,3 +1952,6 @@ if __name__ == "__main__":
         _demo()
     else:
         main()
+        if _STALLED:  # a hung Playwright thread would block interpreter exit
+            sys.stdout.flush()
+            os._exit(0)
