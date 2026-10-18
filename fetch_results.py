@@ -517,6 +517,8 @@ def fetch_catalog_multi_domain(
         )
 
     merged: dict = {}
+    empty: list = []
+    empty_names: list = []
     for domain in domains:
         if domain == home_domain:
             dcookies, dtoken = cookies, access_token
@@ -541,6 +543,9 @@ def fetch_catalog_multi_domain(
             items = _fetch()
             if not items:
                 print(f"  ⚠️  .{domain} still 0 items — its listings may look 'missing' this run")
+        if not items:
+            empty.append(_fetch)
+            empty_names.append(domain)
         new = 0
         for it in items:
             iid = it.get("id")
@@ -548,6 +553,30 @@ def fetch_catalog_multi_domain(
                 merged[iid] = it
                 new += 1
         print(f"  🌍 .{domain}: {len(items)} items ({new} new after cross-domain merge)")
+
+    # Client logs 2026-10-13/15/17: .fr stayed at 0 after the in-loop retry, then ~half of the 296
+    # "disappeared" listings turned out still active (an hour of wasted sold-verification). A block
+    # that clears in minutes is common, so give each empty domain one last try after the others.
+    # Only the home domain (.fr) ever comes back empty and it is the only one using the logged-in
+    # cookies/token (the other nine use anonymous sessions and are fine), so the late retry for it
+    # switches to an anonymous session too. Search results don't need the login.
+    for fetch, domain in zip(empty, empty_names):
+        time.sleep(random.uniform(60, 90))
+        if domain == home_domain:
+            acookies, atoken = _anon_session_for_domain(domain)
+            if acookies:
+                fetch = lambda dc=acookies, dt=atoken, d=domain: fetch_catalog_via_requests(
+                    keyword, dc, dt, max_pages=max_pages, catalog_id=catalog_id,
+                    stop_when_old_ratio=stop_when_old_ratio, domain=d,
+                )
+        items = fetch()
+        new = 0
+        for it in items:
+            iid = it.get("id")
+            if iid is not None and iid not in merged:
+                merged[iid] = it
+                new += 1
+        print(f"  🔁 .{domain}: late retry -> {len(items)} items ({new} new)")
 
     return list(merged.values())
 

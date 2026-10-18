@@ -104,6 +104,26 @@ def save_tracking(path: str, tracking: dict) -> None:
             writer.writerow({k: row.get(k, "") for k in TRACK_FIELDS})
 
 
+def _lifespan_hours(row: dict):
+    """Publish -> last seen alive, in hours, or None when the publish time is unknown. Derived
+    from created_at_ts and last_seen (not the stored lifespan_hours) so rows recorded before the
+    last_seen fix are corrected retroactively; the stored value is only a fallback."""
+    cts, ls = row.get("created_at_ts"), row.get("last_seen")
+    try:
+        if cts and ls:
+            v = (_parse(ls) - datetime.fromtimestamp(int(float(cts)), tz=timezone.utc)
+                 ).total_seconds() / 3600
+            if v >= 0:
+                return round(v, 1)
+    except (ValueError, OverflowError, OSError):
+        pass
+    try:
+        lh = row.get("lifespan_hours")
+        return float(lh) if lh not in ("", None) else None
+    except ValueError:
+        return None
+
+
 def update_tracking(tracking: dict, current_items: list, now: datetime) -> tuple:
     """
     Pure state update: reconcile the tracking table against the current active set.
@@ -191,8 +211,12 @@ def update_tracking(tracking: dict, current_items: list, now: datetime) -> tuple
             if cts:
                 try:
                     pub = datetime.fromtimestamp(int(float(cts)), tz=timezone.utc)
+                    # Measured to the last time it was SEEN alive, not to detection: with the
+                    # 2-run debounce and ~daily cycles, detection lags the sale by 2+ days, which
+                    # made every lifespan >= 48h (client logs: fast movers 0% in every run).
+                    seen = _parse(row["last_seen"]) if row.get("last_seen") else now
                     row["lifespan_hours"] = round(
-                        (now - pub).total_seconds() / 3600, 1
+                        (seen - pub).total_seconds() / 3600, 1
                     )
                 except Exception:
                     pass
@@ -217,16 +241,24 @@ def extract_publish_ts_from_html(html: str) -> int | None:
     return collections.Counter(ts).most_common(1)[0][0]
 
 
-def _page_photo_ts(html: str, now_ts: float | None = None) -> int | None:
-    """extract_publish_ts_from_html, but only a believable value (not future, < 3 years old)."""
-    ts = extract_publish_ts_from_html(html)
-    now_ts = now_ts or time.time()
-    return ts if ts and now_ts - 3 * 365 * 86400 <= ts <= now_ts + 3600 else None
+# NOT used as a publish-time source: a live cross-check on the client's machine (2026-10-15,
+# 138 + 78 listings) found the page's photo timestamps NEVER within 24h of the item API / "posted
+# X ago" value - they are not the listing's creation time. Rows it wrote are cleaned up by
+# _repair_photo_ts below.
+_PHOTO_TS_BAD_SINCE = "2026-10-15 08:00:00"   # UTC; first run of the build that used the photos
 
 
-# How the publish time was obtained this run: agree/differ = API-or-span value vs the page's
-# photo timestamps (a live cross-check of the fallback); fallback = filled from photos only.
-_ts_src = collections.Counter()
+def _repair_photo_ts(tracking: dict, since: str = _PHOTO_TS_BAD_SINCE) -> int:
+    """Clear publish times (and the lifespan derived from them) on rows enriched since the
+    photo-timestamp fallback shipped, so they are re-captured from the real source. Rows with no
+    offers_seen_at were not enriched in that window and are left alone. Returns rows cleared."""
+    n = 0
+    for row in tracking.values():
+        if (row.get("created_at_ts") and (row.get("offers_seen_at") or "") >= since):
+            row["created_at_ts"] = ""
+            row["lifespan_hours"] = ""
+            n += 1
+    return n
 
 
 # ── Shared rate-limit back-off across all worker tabs ──
@@ -918,8 +950,8 @@ def variant_analysis(
             g["gone"] += 1
             if _sold_within_days(r, now, 30):
                 g["sold_30d"] += 1
-            lh = r.get("lifespan_hours")
-            if lh not in ("", None):
+            lh = _lifespan_hours(r)
+            if lh is not None:
                 try:
                     life = float(lh)
                     # Only trust lifespan as "time to sell" when we caught the
@@ -1130,7 +1162,21 @@ def _publish_ts_from_page(page, item_id: str) -> dict:
         # false-matched Vinted's bundled i18n error dictionary ("rate limited" /
         # "too many requests"), which is present on EVERY page — causing an endless
         # false rate-limit loop even when nothing was blocked.
-        html = page.content()
+        # Live probe 2026-10-17: no /api/v2/items call fires any more and page.content() raised
+        # "page is navigating" (locale redirect / hydration), which the blanket except below
+        # swallowed -> nothing captured on ~80% of listings. Let the page settle, retry content(),
+        # and never let a content() failure skip the on-page "posted X ago" fallback.
+        try:
+            page.wait_for_load_state("load", timeout=15000)
+        except Exception:
+            pass
+        html = ""
+        for _ in range(4):
+            try:
+                html = page.content()
+                break
+            except Exception:
+                time.sleep(1.5)
 
         # Structured attributes (brand, colour) from the server-rendered JSON-LD.
         try:
@@ -1170,7 +1216,7 @@ def _publish_ts_from_page(page, item_id: str) -> dict:
         else:
             try:
                 txt = page.locator("[itemprop='upload_date'] span").inner_text(
-                    timeout=2500
+                    timeout=6000
                 )
                 hrs = fr.parse_time(txt)
                 if 0 < hrs < 9000:
@@ -1178,16 +1224,6 @@ def _publish_ts_from_page(page, item_id: str) -> dict:
                     info["created_at_ts"] = int(pub.timestamp())
             except Exception:
                 pass
-        # Client logs 2026-10-09/12: only ~40% of item pages yielded a publish time (API
-        # intercept / span both silently missing), so fast sellers vanished un-enriched. The
-        # photo-timestamp parse above was written for exactly this but never wired in.
-        html_ts = _page_photo_ts(html)
-        if html_ts:
-            if info["created_at_ts"]:
-                _ts_src["agree" if abs(html_ts - info["created_at_ts"]) <= 86400 else "differ"] += 1
-            else:
-                info["created_at_ts"] = html_ts
-                _ts_src["fallback"] += 1
     except RateLimited:
         raise
     except Exception:
@@ -1362,9 +1398,6 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
         executor.shutdown(wait=not _STALLED, cancel_futures=True)
     save_tracking(path, tracking)
     print(f"   {_hm()} → publish time captured for {captured}/{len(todo)} listings")
-    if _ts_src:
-        print(f"     (page-photo cross-check: {_ts_src['agree']} agree · {_ts_src['differ']} differ "
-              f"· {_ts_src['fallback']} filled from photos only)")
     if _cdp_dead():
         print(f"   ⚠️  Chrome stopped accepting connections — stopped early at {done}/{len(todo)} "
               "(progress saved); Chrome will be restarted before the next product.")
@@ -1528,9 +1561,7 @@ def report(keyword: str, tracking: dict, newly: int, disappeared: int, first_run
     if gone:
         # Time-to-sell from the listing's posting date. Show the DISTRIBUTION,
         # because a single median is dominated by old stock that lingered months.
-        life = sorted(
-            float(r["lifespan_hours"]) for r in gone if r.get("lifespan_hours") != ""
-        )
+        life = sorted(v for v in (_lifespan_hours(r) for r in gone) if v is not None)
         print("  ─────────────── time-to-sell ───────────────")
         if life:
             b24 = sum(1 for v in life if v <= 24)
@@ -1717,13 +1748,27 @@ def main():
     now = datetime.now(timezone.utc)
     tracking = load_tracking(path)
     first_run = len(tracking) == 0
+    # One-time cleanup of publish times written by the withdrawn photo-timestamp fallback.
+    _marker = os.path.join(TRACK_DIR, ".photo_ts_repaired")
+    if tracking and not os.path.exists(_marker):
+        cleared = _repair_photo_ts(tracking)
+        if cleared:
+            print(f"   🧹 cleared {cleared} publish times from the withdrawn photo fallback "
+                  "(they are re-captured from the item page over the next runs)")
+        os.makedirs(TRACK_DIR, exist_ok=True)
+        open(_marker, "w").close()
 
     # SAFETY GUARD — a failed/partial catalog fetch (401 auth expiry, rate limit,
     # network drop) returns few/zero listings. Without this guard, update_tracking
     # would mark EVERY tracked listing as "disappeared/sold" and corrupt the data.
     # If the active count collapses versus what we already know is live, skip this
     # run entirely and preserve the tracking file.
-    prior_active = sum(1 for r in tracking.values() if r.get("status") == "active")
+    # Baseline = rows the PREVIOUS run actually saw (last_seen == newest stamp), not every
+    # "active" row: those include listings missing from search awaiting confirmation, which
+    # inflate the baseline and made a normal run look like a collapsed fetch.
+    _last_run = max((r.get("last_seen") or "" for r in tracking.values()), default="")
+    prior_active = sum(1 for r in tracking.values()
+                       if r.get("status") == "active" and r.get("last_seen") == _last_run)
     current_ids = {str(i.get("id")) for i in raw if i.get("id")}
     if not first_run and prior_active >= 20 and len(current_ids) < prior_active * 0.5:
         print(
@@ -1871,12 +1916,33 @@ def _demo() -> None:
     assert _enrich_queue(q, None) == ["new", "mid", "old"], _enrich_queue(q, None)
     assert _enrich_queue(q, "2") == ["new", "mid"]
 
-    # Page-photo publish-time fallback: mode of the photo timestamps, sanity-windowed.
-    assert _page_photo_ts('"timestamp":1760000000 "timestamp":1760000000 "timestamp":1700000000',
-                          now_ts=1760100000) == 1760000000
-    assert _page_photo_ts('"timestamp":1760000000', now_ts=1900000000) is None   # >3y old
-    assert _page_photo_ts('"timestamp":1770000000', now_ts=1760000000) is None   # future
-    assert _page_photo_ts("no timestamps here") is None
+    # Withdrawn photo-timestamp fallback: rows enriched since it shipped lose their publish time
+    # and lifespan; older rows and rows never enriched are untouched.
+    rp = {
+        "bad": {"created_at_ts": "1760000000", "lifespan_hours": "50", "offers_seen_at": "2026-10-15 11:00:00"},
+        "ok": {"created_at_ts": "1750000000", "lifespan_hours": "70", "offers_seen_at": "2026-10-14 09:00:00"},
+        "none": {"created_at_ts": "1750000001", "lifespan_hours": "", "offers_seen_at": ""},
+    }
+    assert _repair_photo_ts(rp) == 1
+    assert rp["bad"]["created_at_ts"] == "" and rp["bad"]["lifespan_hours"] == ""
+    assert rp["ok"]["created_at_ts"] == "1750000000" and rp["none"]["created_at_ts"] == "1750000001"
+
+    # Lifespan is publish -> LAST SEEN, not detection: a listing posted 30h before it was last
+    # seen, detected gone two days later, must read 30h (a fast mover), not 78h. Old stored
+    # lifespan_hours is only a fallback.
+    t_pub = datetime(2026, 10, 10, 6, 0, 0, tzinfo=timezone.utc)
+    lr = {"created_at_ts": str(int(t_pub.timestamp())), "last_seen": "2026-10-11 12:00:00",
+          "lifespan_hours": "78.0"}
+    assert _lifespan_hours(lr) == 30.0, _lifespan_hours(lr)
+    assert _lifespan_hours({"created_at_ts": "", "last_seen": "2026-10-11 12:00:00",
+                            "lifespan_hours": ""}) is None
+    assert _lifespan_hours({"created_at_ts": "", "last_seen": "", "lifespan_hours": "12"}) == 12.0
+    trk = {"a": {"id": "a", "status": "active", "created_at_ts": str(int(t_pub.timestamp())),
+                 "first_seen": "2026-10-10 07:00:00", "last_seen": "2026-10-11 12:00:00",
+                 "missed_runs": 0, "title": "", "brand": "", "size": "", "color": "", "variant": ""}}
+    update_tracking(trk, [], datetime(2026, 10, 12, 12, 0, 0, tzinfo=timezone.utc))   # miss 1
+    update_tracking(trk, [], datetime(2026, 10, 13, 12, 0, 0, tzinfo=timezone.utc))   # miss 2
+    assert trk["a"]["status"] == "disappeared" and trk["a"]["lifespan_hours"] == 30.0, trk["a"]
 
     # CDP circuit breaker: a degraded Chrome (every connect times out) must stop the item loop
     # after a few attempts, not burn one timeout per item (live: 0/300 over ~16h, 2026-10-05).
