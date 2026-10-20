@@ -106,6 +106,18 @@ def save_tracking(path: str, tracking: dict) -> None:
             writer.writerow({k: row.get(k, "") for k in TRACK_FIELDS})
 
 
+def _coverage_line(current_ids: set, prev_ids: set) -> str:
+    """Did a category sweep see every new listing? A sweep reads a ~960-per-site window, so if none of
+    this run's listings were also in the previous run, more new listings arrived than the window holds
+    and some were never seen. ponytail: overlap is measured across all country sites together, so a gap in
+    one site can be hidden by overlap in another; measure per site if that matters."""
+    overlap = len(current_ids & prev_ids)
+    if overlap > 0:
+        return f"   coverage: complete — {overlap} listings overlap the previous run"
+    return ("   ⚠️  coverage: GAP — none of this run's listings were in the previous run; more new listings "
+            "arrive than the ~960 window. Run more often or choose a narrower category.")
+
+
 def _lifespan_hours(row: dict):
     """Publish -> last seen alive, in hours, or None when the publish time is unknown. Derived
     from created_at_ts and last_seen (not the stored lifespan_hours) so rows recorded before the
@@ -1872,6 +1884,10 @@ def main():
         )
         sys.exit(3)
 
+    if seedless and not first_run:
+        prev_ids = {i for i, r in tracking.items() if r.get("last_seen") == _last_run}
+        print(_coverage_line(current_ids, prev_ids))
+
     newly, disappeared = update_tracking(tracking, raw, now)
 
     # Data reliability (opt-in VINTED_VERIFY_SOLD=1): a disappeared listing is NOT a sale.
@@ -2082,6 +2098,9 @@ def _demo() -> None:
             "category_path": "Maison > Cuisine > Ustensiles de cuisine"}
     assert len(pg.identified_key(_kit)) == 2, pg.identified_key(_kit)
     assert pg.product_key({"brand": "Zara", "title": "Zara", "category": "Montres"}) == ("zara", "montres")
+    assert _coverage_line({"1", "2", "3"}, {"3", "4"}) == "   coverage: complete — 1 listings overlap the previous run"
+    assert _coverage_line({"1", "2"}, {"3", "4"}).startswith("   ⚠️  coverage: GAP")
+    assert _coverage_line({"1"}, set()).startswith("   ⚠️  coverage: GAP")
     # check_model_sales: a row read on its page (category set) matches on the PAGE colour, not the old stored variant
     import check_model_sales as cms, tempfile
     _cdir = tempfile.mkdtemp()
