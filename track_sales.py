@@ -1366,14 +1366,35 @@ def _enrich_queue(tracking: dict, cap) -> list:
     return todo[: int(cap)] if cap else todo
 
 
-def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
+def _reoffer_queue(tracking: dict, now: datetime, cap) -> list:
+    """Active listings first seen 24-72 h ago whose offers were not re-read yet, newest first, capped.
+    Offers are read once, when a listing is first enriched (always ~0 then); listings that attract
+    offers show it a day or more later (client 2026-10-20: wants to see 13+)."""
+    out = []
+    for iid, row in tracking.items():
+        if row.get("status") != "active" or not row.get("first_seen"):
+            continue
+        try:
+            fs = _parse(row["first_seen"])
+            osa = _parse(row["offers_seen_at"]) if row.get("offers_seen_at") else None
+        except ValueError:
+            continue
+        if timedelta(hours=24) <= now - fs <= timedelta(hours=72) and (osa is None or osa - fs <= timedelta(hours=12)):
+            out.append(iid)
+    out.sort(key=lambda i: tracking[i]["first_seen"], reverse=True)
+    return out[: int(cap)] if cap else out
+
+
+def enrich_publish_times(tracking: dict, path: str, workers: int = 5, todo=None) -> int:
     """
     Fill in publish time for active listings missing it, loading item pages across
     several tabs in parallel (default 5; override with VINTED_TRACK_WORKERS).
     Progress is checkpointed so a long backfill is interruptible/resumable.
     Cap per run with VINTED_MAX_ENRICH. Returns how many were captured this run.
+    `todo` (a list of ids) replaces the default queue, e.g. the offers re-check.
     """
-    todo = _enrich_queue(tracking, os.environ.get("VINTED_MAX_ENRICH"))
+    if todo is None:
+        todo = _enrich_queue(tracking, os.environ.get("VINTED_MAX_ENRICH"))
     if not todo:
         return 0
     workers = int(os.environ.get("VINTED_TRACK_WORKERS", workers))
@@ -1402,7 +1423,7 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
                 break
             if info:
                 row = tracking[iid]
-                if info.get("created_at_ts"):
+                if info.get("created_at_ts") and not row.get("created_at_ts"):  # only fills a missing time
                     row["created_at_ts"] = info["created_at_ts"]
                     captured += 1
                 if info.get("brand") and not row.get("brand"):
@@ -1927,6 +1948,12 @@ def main():
     # item page and are captured here, not in the catalog feed.
     if os.environ.get("VINTED_TRACK_ENRICH", "1") != "0":
         enrich_publish_times(tracking, path)
+        if seedless:
+            try:
+                enrich_publish_times(tracking, path,
+                                     todo=_reoffer_queue(tracking, now, os.environ.get("VINTED_MAX_REOFFER", "300")))
+            except Exception as e:
+                print(f"⚠️  offers re-check skipped: {type(e).__name__}: {e}")
 
     # Phase 5 Stage A (opt-in): vision-AI product identification → full, specific
     # titles. Uses the deterministic stub by default (free, no key); set
@@ -2100,6 +2127,16 @@ def _demo() -> None:
     assert pg.product_key({"brand": "Zara", "title": "Zara", "category": "Montres"}) == ("zara", "montres")
     assert _coverage_line({"1", "2", "3"}, {"3", "4"}) == "   coverage: complete — 1 listings overlap the previous run"
     assert _coverage_line({"1", "2"}, {"3", "4"}).startswith("   ⚠️  coverage: GAP")
+    # offers re-check queue: 24-72 h old and not re-read yet
+    _n = datetime(2026, 10, 20, 12, 0, 0, tzinfo=timezone.utc)
+    _fs = lambda h: _fmt(_n - timedelta(hours=h))
+    _rq = {"old": {"status": "active", "first_seen": _fs(48), "offers_seen_at": ""},
+           "young": {"status": "active", "first_seen": _fs(2), "offers_seen_at": ""},
+           "done": {"status": "active", "first_seen": _fs(48), "offers_seen_at": _fmt(_n - timedelta(hours=18))},
+           "first_read": {"status": "active", "first_seen": _fs(60), "offers_seen_at": _fs(59)},
+           "gone": {"status": "disappeared", "first_seen": _fs(48), "offers_seen_at": ""}}
+    assert _reoffer_queue(_rq, _n, "300") == ["old", "first_read"], _reoffer_queue(_rq, _n, "300")
+    assert _reoffer_queue(_rq, _n, "1") == ["old"]
     assert _coverage_line({"1"}, set()).startswith("   ⚠️  coverage: GAP")
     # check_model_sales: a row read on its page (category set) matches on the PAGE colour, not the old stored variant
     import check_model_sales as cms, tempfile
