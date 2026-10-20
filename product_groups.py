@@ -45,7 +45,12 @@ _EXTRA_COLORS = {"blanche": "white", "blanches": "white", "noire": "black", "noi
                  "grise": "grey", "grises": "grey", "rouges": "red", "violette": "purple",
                  "dorée": "gold", "dorées": "gold", "argentée": "silver", "marron": "brown",
                  "bianca": "white", "nera": "black", "rossa": "red", "azul": "blue", "negro": "black",
-                 "blanco": "white", "rojo": "red", "verde": "green"}
+                 "blanco": "white", "rojo": "red", "verde": "green",
+                 "negra": "black", "negras": "black", "negros": "black", "blanca": "white", "blancas": "white",
+                 "blancos": "white", "roja": "red", "rojas": "red", "rojos": "red", "azules": "blue", "verdes": "green",
+                 "grises": "grey", "nere": "black", "neri": "black", "bianche": "white", "bianchi": "white",
+                 "rosse": "red", "rossi": "red", "schwarz": "black", "schwarze": "black", "weiss": "white",
+                 "weiße": "white", "zwart": "black", "zwarte": "black", "wit": "white", "witte": "white"}
 
 
 def _colour_of(w):
