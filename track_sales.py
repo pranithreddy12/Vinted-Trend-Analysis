@@ -1487,7 +1487,9 @@ def _details_from_attrs(a: dict, now: datetime) -> dict:
         hrs = fr.parse_time(a["upload"]) if a.get("upload") else 0
     except Exception:
         hrs = 0
-    if 0 < hrs < 9000:  # "il y a 3 semaines": coarse, only fills a missing publish time
+    # Only "il y a N heures/jours" (< 1 week) is precise enough to time a sale; "il y a 3 semaines"
+    # can be a week off, which made time-to-sell meaningless on backlog-checked rows.
+    if 0 < hrs < 168:
         d["created_at_ts"] = str(int((now - timedelta(hours=hrs)).timestamp()))
     return {k: v for k, v in d.items() if v or k == "brand"}
 
@@ -2105,6 +2107,8 @@ def _demo() -> None:
     assert _details_from_attrs({"crumbs": ["Maison", "Décoration", "Bougies"]}, _now) == {
         "brand": "", "category": "Bougies", "category_path": "Maison > Décoration > Bougies"}
     assert _details_from_attrs({"brand": "Nike", "crumbs": []}, _now) == {}  # page didn't render: change nothing
+    assert "created_at_ts" not in _details_from_attrs({"brand": "Nike", "upload": "Il y a 3 semaines",
+                                                      "crumbs": _crumbs}, _now)  # too coarse to time a sale
     assert pg.identified_key({"brand": "Nike", "title": "Scarpe LunarTempo", "size": "43", "color": "Bordeaux, Noir",
                               "category": "Chaussures de course"}) == ("nike", "shoes", "lunartempo")
     # per-family identity (client's categories): shoes need a model + colour + size, face care a name + volume,
