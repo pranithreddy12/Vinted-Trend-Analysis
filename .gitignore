@@ -25,3 +25,4 @@ tracked_keywords.rotated.txt
 tracking/.watchlist_rotation
 run_tracker.lock
 client_data/
+client_reports/
