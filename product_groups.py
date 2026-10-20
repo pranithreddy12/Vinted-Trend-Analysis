@@ -59,6 +59,7 @@ def _tokens(s: str) -> list:
 _NO_BRAND = {"pas de marque", "no brand", "sans marque", "inconnu", "inconnue", "unknown",
              "autre", "other", "sin marca", "senza marca", "geen merk", "keine marke",
              "fait main", "handmade", "hecho a mano", "fatto a mano",
+             "indépendante", "marque indépendante", "independent", "independiente", "indipendente",
              # category words older rows stored as "brand" (first-title-word guess)
              "accessories", "accessoires", "art"}
 _TYPES = {
@@ -177,7 +178,10 @@ _MODEL_FILLER = {"running", "sport", "sports", "trainers", "trainer", "runner", 
                  "training", "ml", "cl", "oz", "kg", "cm", "mm",
                  # materials and shapes: "Bottes Zara cuir" names no model
                  "cuir", "daim", "toile", "simili", "leather", "suede", "cuero", "pelle", "leder", "leer",
-                 "montantes", "basses", "low", "high", "mid", "plateforme", "compensées"}
+                 "montantes", "basses", "low", "high", "mid", "plateforme", "compensées",
+                 # generic "sports/running/walking shoes" words in other languages: not a model
+                 "deportivas", "deportiva", "corsa", "walking", "hiking", "trail", "ballo", "danza", "dance",
+                 "sportschuhe", "laufschuhe", "hardloopschoenen", "tennis", "football", "foot", "basket", "shoes"}
 
 
 def _model_of(row: dict, exclude: str = "", numbers: bool = False) -> str:

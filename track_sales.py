@@ -2125,6 +2125,8 @@ def _demo() -> None:
     assert pg.identified_key(dict(_shoe, title="Nike Air Max 95 noir"))[2] == "air max 95"
     assert pg.identified_key(dict(_shoe, title="Nike Pegasus 38 noir"))[2] == "pegasus"
     assert pg.identified_key(dict(_shoe, brand="Zara", title="Bottes Zara cuir noir")) is None
+    assert pg.identified_key(dict(_shoe, brand="Reebok", title="Reebok deportivas negras")) is None
+    assert pg.product_key({"brand": "indépendante", "title": "pull col v noir"}) is None
     _face = {"brand": "Caudalie", "title": "Caudalie Vinoperfect sérum éclat 30 ml",
              "category_path": "Femmes > Beauté > Soins du visage > Sérums"}
     _fk = pg.identified_key(_face)
