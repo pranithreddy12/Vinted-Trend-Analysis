@@ -2065,6 +2065,23 @@ def _demo() -> None:
     assert pg.identified_key({"brand": "Nike", "title": "Scarpe LunarTempo", "size": "43", "color": "Bordeaux, Noir",
                               "category": "Chaussures de course"}) == ("nike", "shoes")
     assert pg.product_key({"brand": "Zara", "title": "Zara", "category": "Montres"}) == ("zara", "montres")
+    # check_model_sales: a row read on its page (category set) matches on the PAGE colour, not the old stored variant
+    import check_model_sales as cms, tempfile
+    _cdir = tempfile.mkdtemp()
+    _crow = {k: "" for k in TRACK_FIELDS}
+    _crow.update({"id": "1", "title": "Gourde Smeg 500 ml", "brand": "Smeg", "variant": "0.5l", "color": "Crème",
+                  "category": "Gourdes", "status": "sold", "last_seen": _fmt(datetime.now(timezone.utc)), "price": "16"})
+    with open(os.path.join(_cdir, "s.csv"), "w", newline="", encoding="utf-8") as _f:
+        _w = csv.DictWriter(_f, fieldnames=TRACK_FIELDS)
+        _w.writeheader()
+        _w.writerow(_crow)
+    assert cms.check(os.path.join(_cdir, "s.csv"), "smeg", "cream", "0.5l", hours=24)["sold"] == 1
+    _crow["category"] = ""                      # not checked on its page: old stored variant ("0.5l", no colour)
+    with open(os.path.join(_cdir, "s.csv"), "w", newline="", encoding="utf-8") as _f:
+        _w = csv.DictWriter(_f, fieldnames=TRACK_FIELDS)
+        _w.writeheader()
+        _w.writerow(_crow)
+    assert cms.check(os.path.join(_cdir, "s.csv"), "smeg", "cream", "0.5l", hours=24)["sold"] == 0
     _real_w = globals()["_verify_sold_worker"]
 
     def _fake_w(iid):

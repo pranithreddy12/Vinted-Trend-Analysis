@@ -34,8 +34,10 @@ def check(files, brand, color="", cap="", line="", hours=48):
             seen.add(r["id"])
             if fr.is_off_product_type(r["title"], f"{brand} tumbler", r.get("category", "")):
                 continue  # e.g. a Smeg kettle in a Smeg bottle file (no-op for other brands)
-            v = (r.get("variant") or "").lower() or ts.build_variant(
-                r["title"], r.get("brand", ""), r.get("color", ""), r.get("size", ""))
+            # A row checked on its Vinted page (has a category) has the real colour/size: rebuild the
+            # variant from them; the stored one came from the title by older code.
+            v = ((r.get("variant") or "").lower() if not r.get("category") else "") or ts.build_variant(
+                r["title"], r.get("brand", ""), r.get("color", ""), r.get("size", "")).lower()
             if (cap and cap.lower() not in v) or (color and ts.normalize_color(color) not in v):
                 continue
             if line and ts.detect_model(r["title"]).lower() != line.lower():
