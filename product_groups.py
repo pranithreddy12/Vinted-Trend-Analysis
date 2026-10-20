@@ -358,12 +358,19 @@ def main():
     ap.add_argument("--sort", choices=("sales", "trend"), default="sales", help="brand ranking order")
     ap.add_argument("--page-brands-only", action="store_true",
                     help="brand ranking: only brands read from the item page (old files guessed brand from the title)")
+    ap.add_argument("--category", action="append", default=[],
+                    help="keep rows whose category path contains this text (repeatable, OR)")
     a = ap.parse_args()
     files = a.files or _sweep_files()
     if not files:
         print("no category sweep files found (tracked_keywords.txt cat: lines / tracking/*.csv); nothing to do")
         return
     rows = [r for f in files for r in csv.DictReader(open(f, encoding="utf-8"))]
+    if a.category:
+        want = [c.lower() for c in a.category]
+        total = len(rows)
+        rows = [r for r in rows if any(c in (r.get("category_path") or r.get("category") or "").lower() for c in want)]
+        print(f"category filter {a.category}: kept {len(rows)} of {total} rows")
     if a.by == "brand":
         brands = rank_brands(rows, a.days, a.min_sold, page_brands_only=a.page_brands_only)
         if a.sort == "trend":  # 'new' (no sales in the earlier half) first, then by % change
