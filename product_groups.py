@@ -12,6 +12,10 @@ across FR/EN/IT/ES/NL/DE ("veste"/"giacca"/"jacket" -> jacket); when no type wor
 it falls back to the first leftover word. Colours and sizes are its variants.
 Only status=sold rows (Vinted's item page said Sold) count as sales; disappeared never does.
 
+Time to sell from a CATEGORY sweep is a lower bound: the sweep sees only the newest ~960 listings
+per domain, so last_seen is when a listing left that window, not when it sold. Watch-list
+keywords follow a listing until it goes, so their time to sell is the real one.
+
 Known limits: two different models of the same brand + type merge (e.g. two Zara jackets);
 image recognition (Phase 5) is the later fix.
 """
@@ -107,8 +111,8 @@ def _type_of(w):
 def product_key(row: dict):
     """(brand, canonical type) or None when unidentified. See module docstring."""
     brand = (row.get("brand") or "").strip().lower()
-    if not brand or brand in _NO_BRAND:
-        return None
+    if not brand or brand in _NO_BRAND or _type_of(brand) or brand in _STOP or _colour_of(brand):
+        return None  # old rows guessed brand from the first title word ("Vintage", "Mug", "Blanc")
     btoks = set(_tokens(brand))
     title = (row.get("title") or "").lower().replace("t-shirt", "tshirt").replace("t shirt", "tshirt")
     toks = [w for w in _tokens(title)
@@ -229,6 +233,7 @@ def main():
               f"\n   variants: {p['variants']}\n   e.g. {p['source_listings']}")
     print(f"\n{sum(p['passes_alert_rule'] for p in prods)} of {len(prods)} products pass the alert rule "
           "(>=30 confirmed sales/30d, competition not High, score >=70)")
+    print("note: for category-sweep files, time to sell is a lower bound (see module docstring)")
     if a.out:  # written even when empty, so a quiet run still leaves a (header-only) file
         with open(a.out, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=list(prods[0].keys()) if prods else ["product"])

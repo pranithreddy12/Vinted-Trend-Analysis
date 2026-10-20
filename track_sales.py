@@ -1988,6 +1988,8 @@ def _demo() -> None:
     assert pg.product_key({"brand": "Maisons du Monde", "title": "Assiettes plates x6"}) == ("maisons du monde", "plate")
     assert pg.product_key({"brand": "Ikea", "title": "Kallax étagère"}) == ("ikea", "kallax")          # fallback word
     assert pg.product_key({"brand": "Accessories", "title": "Veste en jean"}) is None
+    assert pg.product_key({"brand": "Vintage", "title": "Robe rayée vintage rouge"}) is None   # guessed brand
+    assert pg.product_key({"brand": "Mug", "title": "Tazze"}) is None
     assert pg.product_key({"brand": "", "title": "Veste en jean"}) is None
     assert pg.product_key({"brand": "Zara", "title": "Zara blanc S"}) is None
     # discovery ranking: 30 sold in-window + 3 active -> alert-rule pass
