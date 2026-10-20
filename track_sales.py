@@ -58,6 +58,7 @@ TRACK_FIELDS = [
     "offers",          # buyer offers on this listing (early-demand signal, from item page)
     "offers_seen_at",  # when the offers count was captured (offers are a moving snapshot)
     "category",        # Vinted's own category from the item page breadcrumb ("Chaussures de course")
+    "category_path",   # full Vinted breadcrumb, "Femmes > Chaussures > Chaussures de sport > Chaussures de course"
 ]
 
 TS_FMT = "%Y-%m-%d %H:%M:%S"
@@ -1447,7 +1448,8 @@ def _details_from_attrs(a: dict, now: datetime) -> dict:
     brand = (a.get("brand") or "").strip()
     crumbs = [c for c in a["crumbs"] if c and not (brand and c.lower().startswith(brand.lower()))]
     d = {"brand": brand, "size": (a.get("size") or "").strip(), "color": (a.get("color") or "").strip(),
-         "category": crumbs[-1] if len(crumbs) > 1 else ""}
+         "category": crumbs[-1] if len(crumbs) > 1 else "",
+         "category_path": " > ".join(crumbs) if len(crumbs) > 1 else ""}
     try:
         hrs = fr.parse_time(a["upload"]) if a.get("upload") else 0
     except Exception:
@@ -1558,7 +1560,7 @@ def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2
             row = tracking.get(iid)
             details = _PAGE_DETAILS.pop(iid, None)
             if row is not None and details:
-                for k in ("brand", "size", "color", "category"):
+                for k in ("brand", "size", "color", "category", "category_path"):
                     if k in details:
                         row[k] = details[k]
                 if details.get("created_at_ts") and not row.get("created_at_ts"):
@@ -2055,8 +2057,10 @@ def _demo() -> None:
     d = _details_from_attrs({"brand": "Nike", "size": "43", "color": "Bordeaux, Noir",
                              "upload": "Il y a 2 jours", "crumbs": _crumbs}, _now)
     assert d == {"brand": "Nike", "size": "43", "color": "Bordeaux, Noir", "category": "Chaussures de course",
+                 "category_path": "Femmes > Chaussures > Chaussures de sport > Chaussures de course",
                  "created_at_ts": str(int((_now - timedelta(hours=48)).timestamp()))}, d
-    assert _details_from_attrs({"crumbs": ["Maison", "Décoration", "Bougies"]}, _now) == {"brand": "", "category": "Bougies"}
+    assert _details_from_attrs({"crumbs": ["Maison", "Décoration", "Bougies"]}, _now) == {
+        "brand": "", "category": "Bougies", "category_path": "Maison > Décoration > Bougies"}
     assert _details_from_attrs({"brand": "Nike", "crumbs": []}, _now) == {}  # page didn't render: change nothing
     assert pg.identified_key({"brand": "Nike", "title": "Scarpe LunarTempo", "size": "43", "color": "Bordeaux, Noir",
                               "category": "Chaussures de course"}) == ("nike", "shoes")
@@ -2074,6 +2078,7 @@ def _demo() -> None:
         verify_disappearances(_trk, os.path.join(tempfile.mkdtemp(), "t.csv"), ["n"], workers=1)
         assert _trk["n"]["status"] == "sold" and _trk["n"]["brand"] == "Nike" and _trk["n"]["size"] == "43", _trk
         assert _trk["n"]["category"] == "Chaussures de course" and _trk["n"]["created_at_ts"], _trk
+        assert _trk["n"]["category_path"] == "Femmes > Chaussures > Chaussures de sport > Chaussures de course", _trk
     finally:
         globals()["_verify_sold_worker"] = _real_w
 
