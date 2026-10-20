@@ -1995,12 +1995,18 @@ def _demo() -> None:
     for i in range(30):
         zrows.append({"id": f"s{i}", "title": "Veste Zara noire", "brand": "Zara", "status": "sold", "price": "20",
                       "created_at_ts": str(int(t_pub.timestamp())), "last_seen": "2026-10-11 06:00:00",
-                      "lifespan_hours": "", "color": "", "size": ""})
+                      "lifespan_hours": "", "color": "", "size": "M"})
     for i in range(3):
         zrows.append({"id": f"a{i}", "title": "Veste Zara noire", "brand": "Zara", "status": "active", "price": "25",
                       "created_at_ts": "", "last_seen": "2026-10-11 06:00:00", "lifespan_hours": "",
-                      "color": "", "size": ""})
+                      "color": "", "size": "M"})
+    # promised rule: no colour, or no size/capacity ('Autre' is not a size) -> unidentified, never counted
+    zrows += [dict(zrows[0], id="nosize", size=""), dict(zrows[0], id="autre", size="Autre"),
+              dict(zrows[0], id="nocol", title="Veste Zara")]
+    assert all(pg.identified_key(r) is None for r in zrows[-3:])
+    assert pg.identified_key({"brand": "Smeg", "title": "Gourde Smeg 500 ml crème", "size": ""}) == ("smeg", "bottle")
     zp = pg.rank_products(zrows)[0][0]
+    assert zp["variants"] == "black M: 30 sold", zp["variants"]
     assert zp["product"] == "zara jacket" and zp["confirmed_sold_30d"] == 30, zp
     assert zp["competition_level"] == "Low" and zp["passes_alert_rule"] is True, zp
     # Smeg bottle watch keeps drinkware, drops appliances; drinkware-only brands are untouched

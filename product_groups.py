@@ -3,10 +3,10 @@ and rank products by VERIFIED sales. Read-only on the tracking CSV.
 
   python product_groups.py tracking/home.csv --days 30 --min-sold 3 --top 5 --out discovered_products.csv
 
-Rule that prevents mixing: a listing joins a product only if it has a brand (the seller-entered
-"Marque" from the catalog) AND at least one product-type word left after removing brand, colour,
-size, condition and filler words. Anything else is 'unidentified' and is never counted in any
-product's figures. Placeholder brands ("Inconnu", "Pas de marque"...) are unidentified too.
+Rule that prevents mixing: a listing joins a product only if brand (the seller-entered "Marque"
+from the catalog), product type, colour AND size/capacity are all identified. Anything else is
+'unidentified' and is never counted in any product's figures (what the client was promised
+2026-10-20). Placeholder brands ("Inconnu", "Pas de marque"...) are unidentified too.
 A product is its brand + the first recognised type word, mapped to one canonical English type
 across FR/EN/IT/ES/NL/DE ("veste"/"giacca"/"jacket" -> jacket); when no type word is recognised
 it falls back to the first leftover word. Colours and sizes are its variants.
@@ -118,20 +118,35 @@ def product_key(row: dict):
     return (brand, typ or toks[0]) if toks else None
 
 
-def variant_of(row: dict) -> str:
+def _variant_parts(row: dict) -> tuple:
+    """(colour, size or capacity); '' where not identified. Colour: catalog field, else title.
+    Size: catalog 'Taille' (not the 'Autre' placeholder), else a capacity in the title."""
     col = ts.normalize_color(row.get("color", "")) or next(
         (_colour_of(w) for w in _tokens(row.get("title", "")) if _colour_of(w)), "")
     size = (row.get("size") or "").strip()
-    cap = next((c for c in (ts.canonical_capacity(t) for t in (row.get("title", "").lower().split())) if c), "")
-    return " ".join(x for x in (col, size or cap) if x) or "-"
+    if size.lower() in ("autre", "other", "altro", "otro", "andere"):
+        size = ""
+    title = re.sub(r"(\d)\s+(ml|cl|l|oz)\b", r"\1\2", (row.get("title") or "").lower())  # "500 ml" -> "500ml"
+    cap = next((c for c in (ts.canonical_capacity(t) for t in title.split()) if c), "")
+    return col, size or cap
+
+
+def variant_of(row: dict) -> str:
+    return " ".join(x for x in _variant_parts(row) if x) or "-"
+
+
+def identified_key(row: dict):
+    """product_key, but only when colour AND size/capacity are identified too; else None."""
+    k = product_key(row)
+    return k if k and all(_variant_parts(row)) else None
 
 
 def verification_order(tracking: dict) -> list:
     """Disappeared-but-unverified listing ids, products with the MOST listings first (repeat
     products are the only ones that can ever be ranked), then newest disappearance first."""
-    size = collections.Counter(k for k in (product_key(r) for r in tracking.values()) if k)
+    size = collections.Counter(k for k in (identified_key(r) for r in tracking.values()) if k)
     ids = [i for i, r in tracking.items() if r["status"] == "disappeared"]
-    return sorted(ids, key=lambda i: (-size.get(product_key(tracking[i]), 0),
+    return sorted(ids, key=lambda i: (-size.get(identified_key(tracking[i]), 0),
                                       "".join(chr(255 - ord(c)) for c in tracking[i].get("disappeared_at", ""))))
 
 
@@ -141,7 +156,7 @@ def rank_products(rows, days=30, min_sold=3, now=None):
     since = now - timedelta(days=days)
     groups, unidentified = collections.defaultdict(list), 0
     for r in rows:
-        k = product_key(r)
+        k = identified_key(r)
         if k:
             groups[k].append(r)
         else:
@@ -172,7 +187,7 @@ def rank_products(rows, days=30, min_sold=3, now=None):
             "verdict": opp["verdict"],
             "passes_alert_rule": per_month >= 30 and comp != "High" and opp["score"] >= 70,
             "unverified_disappeared": sum(1 for r in g if r["status"] == "disappeared"),
-            "variants": "; ".join(f"{v} x{n}" for v, n in collections.Counter(variant_of(r) for r in g).most_common(6)),
+            "variants": "; ".join(f"{v}: {n} sold" for v, n in collections.Counter(variant_of(r) for r in sold).most_common(6)),
             "source_listings": " ".join("https://www.vinted.fr/items/" + r["id"] for r in sold[:3]),
         })
     out.sort(key=lambda p: (-p["confirmed_sold_30d"], p["active_listings"]))
@@ -204,7 +219,7 @@ def main():
         return
     rows = [r for f in files for r in csv.DictReader(open(f, encoding="utf-8"))]
     prods, ngroups, unid = rank_products(rows, a.days, a.min_sold)
-    print(f"{len(rows)} listings -> {ngroups} products with a brand + type; {unid} unidentified (not counted); "
+    print(f"{len(rows)} listings -> {ngroups} products (brand + type + colour + size identified); {unid} unidentified (not counted); "
           f"{len(prods)} products with >= {a.min_sold} confirmed sales in {a.days} days")
     for p in prods[: a.top]:
         print(f"\n{p['product']}: {p['confirmed_sold_30d']} confirmed sold · {p['active_listings']} active · "

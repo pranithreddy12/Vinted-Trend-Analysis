@@ -44,10 +44,12 @@ def check(files, brand, color="", cap="", line="", hours=48):
     sold = [(r, v) for r, v in rows if r["status"] == "sold" and r["last_seen"]
             and ts._parse(r["last_seen"]) >= since]
     prices = [float(r["price"]) for r, _ in sold if r.get("price")]
+    life = [h for h in (ts._lifespan_hours(r) for r, _ in sold) if h is not None]
     return {
         "tracked": len(rows), "active": sum(1 for r, _ in rows if r["status"] == "active"),
         "sold": len(sold), "median_price": round(statistics.median(prices), 2) if prices else "",
         "min_price": min(prices) if prices else "", "max_price": max(prices) if prices else "",
+        "median_hours_to_sell": round(statistics.median(life), 1) if life else "", "n_timed": len(life),
         "sold_rows": sold,
     }
 
@@ -79,17 +81,19 @@ def main():
         w = csv.writer(lf)
         if new_log:
             w.writerow(["checked_at_utc", "product", "window_hours", "tracked", "active_now",
-                        "confirmed_sold", "median_price", "min_price", "max_price"])
+                        "confirmed_sold", "median_price", "min_price", "max_price", "median_hours_to_sell"])
         for name, files, brand, color, cap, line in jobs:
             c = check(files, brand, color, cap, line, a.hours)
             print(f"{name}: {c['tracked']} tracked · {c['active']} active · "
                   f"{c['sold']} confirmed sold in {a.hours:g}h"
                   + (f" · listing price median €{c['median_price']} (€{c['min_price']}–€{c['max_price']})"
-                     if c["sold"] else ""))
+                     if c["sold"] else "")
+                  + (f" · median time to sell {c['median_hours_to_sell']} h ({c['median_hours_to_sell'] / 24:.1f} days,"
+                     f" {c['n_timed']} sales with a posting date)" if c["n_timed"] else ""))
             for r, v in sorted(c["sold_rows"], key=lambda x: x[0]["last_seen"]):
                 print(f"    {r['last_seen']}  €{r['price']:>7}  {v or '-':<12} {r['title'][:55]}")
             w.writerow([stamp, name, a.hours, c["tracked"], c["active"], c["sold"],
-                        c["median_price"], c["min_price"], c["max_price"]])
+                        c["median_price"], c["min_price"], c["max_price"], c["median_hours_to_sell"]])
 
 
 if __name__ == "__main__":
