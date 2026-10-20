@@ -7,7 +7,9 @@ Rule that prevents mixing: a listing joins a product only if brand (the seller-e
 from the catalog), product type, colour AND size/capacity are all identified. Anything else is
 'unidentified' and is never counted in any product's figures (what the client was promised
 2026-10-20). Placeholder brands ("Inconnu", "Pas de marque"...) are unidentified too.
-A product is its brand + the first recognised type word, mapped to one canonical English type
+A product is its brand + type. The type comes from Vinted's own category when the row has one
+(read from the item page during sold verification, e.g. "Chaussures de course" -> shoes); else
+from the title: the first recognised type word, mapped to one canonical English type
 across FR/EN/IT/ES/NL/DE ("veste"/"giacca"/"jacket" -> jacket); when no type word is recognised
 it falls back to the first leftover word. Colours and sizes are its variants.
 Only status=sold rows (Vinted's item page said Sold) count as sales; disappeared never does.
@@ -113,6 +115,9 @@ def product_key(row: dict):
     brand = (row.get("brand") or "").strip().lower()
     if not brand or brand in _NO_BRAND or _type_of(brand) or brand in _STOP or _colour_of(brand):
         return None  # old rows guessed brand from the first title word ("Vintage", "Mug", "Blanc")
+    cat = _tokens(row.get("category"))  # Vinted's own category (item page), when known: no guessing
+    if cat:
+        return brand, next((t for t in map(_type_of, cat) if t), None) or " ".join(cat)
     btoks = set(_tokens(brand))
     title = (row.get("title") or "").lower().replace("t-shirt", "tshirt").replace("t shirt", "tshirt")
     toks = [w for w in _tokens(title)

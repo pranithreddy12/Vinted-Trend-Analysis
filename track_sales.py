@@ -57,6 +57,7 @@ TRACK_FIELDS = [
     "variant",         # brand + capacity/size + colour signature for grouping
     "offers",          # buyer offers on this listing (early-demand signal, from item page)
     "offers_seen_at",  # when the offers count was captured (offers are a moving snapshot)
+    "category",        # Vinted's own category from the item page breadcrumb ("Chaussures de course")
 ]
 
 TS_FMT = "%Y-%m-%d %H:%M:%S"
@@ -1424,6 +1425,37 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5) -> int:
 # sales; 404/removed/unavailable are excluded; a page that's live again was a glitch (revert to
 # active). Anything we couldn't verify stays "disappeared" and is NOT counted as a sale.
 
+# Item attributes read on the same page visit as the sold check. Category-sweep rows recorded by
+# older versions have no size and a first-title-word brand ("Robe", "Pull"); the item page has
+# the seller-entered values (verified live 2026-10-20 on vinted.fr/items/10141891209).
+_ATTR_JS = """() => {
+  const t = s => { const e = document.querySelector(s); return e ? e.innerText.trim() : ""; };
+  return {brand: t("[itemprop='name']"), size: t("[itemprop='size']"), color: t("[itemprop='color']"),
+          upload: t("[itemprop='upload_date']"),
+          crumbs: [...document.querySelectorAll("[itemprop='title']")].map(e => e.innerText.trim())};
+}"""
+_PAGE_DETAILS = {}  # item_id -> attributes; filled by _verify_sold_from_page, applied by verify_disappearances
+
+
+def _details_from_attrs(a: dict, now: datetime) -> dict:
+    """Item-page attributes -> tracking-row fields. 'brand' is always set once the page rendered
+    its breadcrumb (empty = the page shows no brand, so a guessed one must go); other fields only
+    when present. category = deepest breadcrumb, minus the '<brand> <category>' crumb."""
+    if not a.get("crumbs"):
+        return {}
+    brand = (a.get("brand") or "").strip()
+    crumbs = [c for c in a["crumbs"] if c and not (brand and c.lower().startswith(brand.lower()))]
+    d = {"brand": brand, "size": (a.get("size") or "").strip(), "color": (a.get("color") or "").strip(),
+         "category": crumbs[-1] if len(crumbs) > 1 else ""}
+    try:
+        hrs = fr.parse_time(a["upload"]) if a.get("upload") else 0
+    except Exception:
+        hrs = 0
+    if 0 < hrs < 9000:  # "il y a 3 semaines": coarse, only fills a missing publish time
+        d["created_at_ts"] = str(int((now - timedelta(hours=hrs)).timestamp()))
+    return {k: v for k, v in d.items() if v or k == "brand"}
+
+
 def _verify_sold_from_page(page, item_id: str) -> str:
     """Return the verified outcome for a disappeared listing:
     'sold' | 'removed' | 'active' | 'disappeared' (unverified). Raises RateLimited on a 429."""
@@ -1440,6 +1472,10 @@ def _verify_sold_from_page(page, item_id: str) -> str:
         sold, status = fr.detect_sold_status(page)
     except Exception:
         return "disappeared"
+    try:
+        _PAGE_DETAILS[item_id] = _details_from_attrs(page.evaluate(_ATTR_JS), datetime.now(timezone.utc))
+    except Exception:
+        pass
     if sold:
         return "sold"                            # Vinted shows Sold/Vendu — a CONFIRMED sale
     if status == "unavailable":
@@ -1507,6 +1543,13 @@ def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2
             except Exception:
                 outcome = "disappeared"
             row = tracking.get(iid)
+            details = _PAGE_DETAILS.pop(iid, None)
+            if row is not None and details:
+                for k in ("brand", "size", "color", "category"):
+                    if k in details:
+                        row[k] = details[k]
+                if details.get("created_at_ts") and not row.get("created_at_ts"):
+                    row["created_at_ts"] = details["created_at_ts"]
             if row is not None:
                 if outcome == "sold":
                     row["status"], row["sale_confirmed"] = "sold", True
@@ -1990,6 +2033,33 @@ def _demo() -> None:
     assert pg.product_key({"brand": "Accessories", "title": "Veste en jean"}) is None
     assert pg.product_key({"brand": "Vintage", "title": "Robe rayée vintage rouge"}) is None   # guessed brand
     assert pg.product_key({"brand": "Mug", "title": "Tazze"}) is None
+    # item-page attributes (verification visit) repair old sweep rows; Vinted's category gives the type
+    _now = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    _crumbs = ["Femmes", "Chaussures", "Chaussures de sport", "Chaussures de course", "Nike Chaussures de course"]
+    d = _details_from_attrs({"brand": "Nike", "size": "43", "color": "Bordeaux, Noir",
+                             "upload": "Il y a 2 jours", "crumbs": _crumbs}, _now)
+    assert d == {"brand": "Nike", "size": "43", "color": "Bordeaux, Noir", "category": "Chaussures de course",
+                 "created_at_ts": str(int((_now - timedelta(hours=48)).timestamp()))}, d
+    assert _details_from_attrs({"crumbs": ["Maison", "Décoration", "Bougies"]}, _now) == {"brand": "", "category": "Bougies"}
+    assert _details_from_attrs({"brand": "Nike", "crumbs": []}, _now) == {}  # page didn't render: change nothing
+    assert pg.identified_key({"brand": "Nike", "title": "Scarpe LunarTempo", "size": "43", "color": "Bordeaux, Noir",
+                              "category": "Chaussures de course"}) == ("nike", "shoes")
+    assert pg.product_key({"brand": "Zara", "title": "Zara", "category": "Montres"}) == ("zara", "montres")
+    _real_w = globals()["_verify_sold_worker"]
+
+    def _fake_w(iid):
+        _PAGE_DETAILS[iid] = d
+        return iid, "sold"
+    globals()["_verify_sold_worker"] = _fake_w
+    try:
+        import tempfile
+        _trk = {"n": {"id": "n", "title": "Scarpe Nike", "status": "disappeared", "brand": "Scarpe", "size": "",
+                      "color": "", "created_at_ts": "", "last_seen": "2026-10-18 00:00:00"}}
+        verify_disappearances(_trk, os.path.join(tempfile.mkdtemp(), "t.csv"), ["n"], workers=1)
+        assert _trk["n"]["status"] == "sold" and _trk["n"]["brand"] == "Nike" and _trk["n"]["size"] == "43", _trk
+        assert _trk["n"]["category"] == "Chaussures de course" and _trk["n"]["created_at_ts"], _trk
+    finally:
+        globals()["_verify_sold_worker"] = _real_w
     assert pg.product_key({"brand": "", "title": "Veste en jean"}) is None
     assert pg.product_key({"brand": "Zara", "title": "Zara blanc S"}) is None
     # discovery ranking: 30 sold in-window + 3 active -> alert-rule pass

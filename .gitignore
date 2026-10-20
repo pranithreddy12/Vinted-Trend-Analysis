@@ -24,3 +24,4 @@ visual_variants_*.csv
 tracked_keywords.rotated.txt
 tracking/.watchlist_rotation
 run_tracker.lock
+client_data/
