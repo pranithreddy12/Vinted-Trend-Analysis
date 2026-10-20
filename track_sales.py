@@ -2111,8 +2111,13 @@ def _demo() -> None:
     # pans a diameter, kitchenware only brand + type
     _sp = "Femmes > Chaussures > Chaussures de sport > Chaussures de course"
     _shoe = {"brand": "Nike", "title": "Nike Pegasus 40 noir", "size": "38", "color": "Noir", "category_path": _sp}
-    assert pg.identified_key(_shoe) == ("nike", "shoes", "pegasus") and pg.variant_of(_shoe) == "black 38"
+    assert pg.identified_key(_shoe) == ("nike", "shoes", "pegasus 40") and pg.variant_of(_shoe) == "black 38"
     assert pg.identified_key(dict(_shoe, title="Nike running noir")) is None            # no model word
+    # model numbers keep models apart; the listing's own size is not a model number; materials are not models
+    assert pg.identified_key(dict(_shoe, title="Nike Air Max 90 noir"))[2] == "air max 90"
+    assert pg.identified_key(dict(_shoe, title="Nike Air Max 95 noir"))[2] == "air max 95"
+    assert pg.identified_key(dict(_shoe, title="Nike Pegasus 38 noir"))[2] == "pegasus"
+    assert pg.identified_key(dict(_shoe, brand="Zara", title="Bottes Zara cuir noir")) is None
     _face = {"brand": "Caudalie", "title": "Caudalie Vinoperfect sérum éclat 30 ml",
              "category_path": "Femmes > Beauté > Soins du visage > Sérums"}
     _fk = pg.identified_key(_face)

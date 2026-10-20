@@ -174,19 +174,35 @@ def _family(row: dict) -> str:
 
 # Words that describe a product but are not its model name ("Nike running noir" has no model).
 _MODEL_FILLER = {"running", "sport", "sports", "trainers", "trainer", "runner", "course", "gym", "fitness",
-                 "training", "ml", "cl", "oz", "kg", "cm", "mm"}
+                 "training", "ml", "cl", "oz", "kg", "cm", "mm",
+                 # materials and shapes: "Bottes Zara cuir" names no model
+                 "cuir", "daim", "toile", "simili", "leather", "suede", "cuero", "pelle", "leder", "leer",
+                 "montantes", "basses", "low", "high", "mid", "plateforme", "compensées"}
 
 
-def _model_of(row: dict, exclude: str = "") -> str:
+def _model_of(row: dict, exclude: str = "", numbers: bool = False) -> str:
     """First two title words left after removing brand, filler, colours, sizes, numbers, type words
-    and single letters, in title order; '' when none (the listing names no model)."""
+    and single letters, in title order; '' when none (the listing names no model).
+    numbers=True (shoes) keeps a model number written right after a model word ("Air Max 90",
+    "Pegasus 40"), unless it is the listing's own size: otherwise 90/95 or 40/41 would merge."""
     btoks = set(_tokens(_brand_of(row)))
+    size = re.sub(r"\D", "", row.get("size") or "")
     title = (row.get("title") or "").lower().replace("t-shirt", "tshirt").replace("t shirt", "tshirt")
-    toks = [w for w in _tokens(title)
-            if w not in btoks and w not in _STOP and w not in _MODEL_FILLER and w != exclude
-            and not _colour_of(w) and not _SIZE_RE.match(w) and not any(c.isdigit() for c in w)
-            and not _type_of(w) and len(w) > 1]
-    return " ".join(toks[:2])
+    out, prev_kept = [], False
+    for w in _tokens(title):
+        if numbers and w.isdigit() and len(w) <= 3 and w != size and prev_kept:
+            out.append(w)
+            prev_kept = False
+            continue
+        keep = (w not in btoks and w not in _STOP and w not in _MODEL_FILLER and w != exclude
+                and not _colour_of(w) and not _SIZE_RE.match(w) and not any(c.isdigit() for c in w)
+                and not _type_of(w) and len(w) > 1)
+        if keep:
+            if sum(not x.isdigit() for x in out) == 2:
+                break
+            out.append(w)
+        prev_kept = keep
+    return " ".join(out)
 
 
 def _volume_ml(title: str) -> int:
@@ -223,7 +239,7 @@ def identified_key(row: dict):
     brand, typ = k
     title, fam = row.get("title", ""), _family(row)
     if fam == "shoes":
-        model = _model_of(row)
+        model = _model_of(row, numbers=True)
         return (brand, "shoes", model) if model and all(_variant_parts(row)) else None
     if fam == "face":
         model = _model_of(row, typ)
