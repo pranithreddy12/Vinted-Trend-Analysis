@@ -2079,6 +2079,24 @@ def _demo() -> None:
     assert pg.identified_key({"brand": "Smeg", "title": "Gourde Smeg 500 ml crème", "size": ""}) == ("smeg", "bottle")
     zp = pg.rank_products(zrows)[0][0]
     assert zp["variants"] == "black M: 30 sold", zp["variants"]
+    # brand ranking: 30-day confirmed sales, trend = recent half vs earlier half, guessed brands ignored
+    brows = ([{"id": f"z{i}", "brand": "Zara", "title": "Robe Zara", "status": "sold", "price": str(10 + i),
+               "last_seen": "2026-10-28 00:00:00" if i < 4 else "2026-10-10 00:00:00", "created_at_ts": ""}
+              for i in range(6)]
+             + [{"id": f"n{i}", "brand": "Nike", "title": "Baskets Nike", "status": "sold", "price": "40",
+                 "last_seen": "2026-10-28 00:00:00", "created_at_ts": ""} for i in range(3)]
+             + [{"id": "a1", "brand": "Nike", "title": "Baskets Nike", "status": "active", "price": "45",
+                 "last_seen": "2026-10-28 00:00:00", "created_at_ts": "", "offers": "13"},
+                {"id": "g1", "brand": "Robe", "title": "Robe longue", "status": "sold", "price": "5",
+                 "last_seen": "2026-10-28 00:00:00", "created_at_ts": ""}])
+    br = pg.rank_brands(brows, now=datetime(2026, 10, 30, tzinfo=timezone.utc))
+    assert [b["brand"] for b in br] == ["zara", "nike"], br
+    assert br[0]["trend_pct"] == 100 and br[0]["median_sold_price"] == 12.5 and br[0]["top_products"] == "dress: 6 sold", br[0]
+    assert br[1]["trend_pct"] is None and br[1]["max_offers_active"] == 13, br[1]
+    for r in brows[:3]:
+        r["category"] = "Robes"
+    assert [b["brand"] for b in pg.rank_brands(brows, now=datetime(2026, 10, 30, tzinfo=timezone.utc),
+                                               page_brands_only=True)] == ["zara"]
     assert zp["product"] == "zara jacket" and zp["confirmed_sold_30d"] == 30, zp
     assert zp["competition_level"] == "Low" and zp["passes_alert_rule"] is True, zp
     # Smeg bottle watch keeps drinkware, drops appliances; drinkware-only brands are untouched

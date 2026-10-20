@@ -110,11 +110,20 @@ def _type_of(w):
     return _TYPE_OF.get(w) or (_TYPE_OF.get(w[:-1]) if len(w) > 3 and w.endswith("s") else None)
 
 
-def product_key(row: dict):
-    """(brand, canonical type) or None when unidentified. See module docstring."""
+def _brand_of(row: dict) -> str:
+    """Lower-cased brand, or '' when there is none or it is a guess. Old rows guessed brand from
+    the first title word ("Vintage", "Mug", "Blanc"); those words are never brands here."""
     brand = (row.get("brand") or "").strip().lower()
     if not brand or brand in _NO_BRAND or _type_of(brand) or brand in _STOP or _colour_of(brand):
-        return None  # old rows guessed brand from the first title word ("Vintage", "Mug", "Blanc")
+        return ""
+    return brand
+
+
+def product_key(row: dict):
+    """(brand, canonical type) or None when unidentified. See module docstring."""
+    brand = _brand_of(row)
+    if not brand:
+        return None
     cat = _tokens(row.get("category"))  # Vinted's own category (item page), when known: no guessing
     if cat:
         return brand, next((t for t in map(_type_of, cat) if t), None) or " ".join(cat)
@@ -157,6 +166,53 @@ def verification_order(tracking: dict) -> list:
     ids = [i for i, r in tracking.items() if r["status"] == "disappeared"]
     return sorted(ids, key=lambda i: (-size.get(identified_key(tracking[i]), 0),
                                       "".join(chr(255 - ord(c)) for c in tracking[i].get("disappeared_at", ""))))
+
+
+def rank_brands(rows, days=30, min_sold=3, now=None, page_brands_only=False):
+    """Brands ranked by confirmed sales in the last `days` (client 2026-10-20: ranking of the
+    brands that sell best in the category over the last 30 days, by trend). Needs only a real
+    brand, so far more listings count than for exact products. trend = sales in the recent half
+    of the window vs the earlier half (None when the earlier half had none: 'new').
+    page_brands_only: count only rows whose brand was read from the item page (they have a
+    category) - needed for files from versions that stored the first title word as brand.
+    active_listings then counts only page-checked actives (usually none): measure competition live."""
+    now = now or max((ts._parse(r["last_seen"]) for r in rows if r.get("last_seen")),
+                     default=datetime.now(timezone.utc))
+    since, mid = now - timedelta(days=days), now - timedelta(days=days / 2)
+    groups = collections.defaultdict(list)
+    for r in rows:
+        b = _brand_of(r)
+        if b and (r.get("category") or not page_brands_only):
+            groups[b].append(r)
+    out = []
+    for brand, g in groups.items():
+        sold = [r for r in g if r["status"] == "sold" and r.get("last_seen") and ts._parse(r["last_seen"]) >= since]
+        if len(sold) < min_sold:
+            continue
+        recent = sum(1 for r in sold if ts._parse(r["last_seen"]) >= mid)
+        earlier = len(sold) - recent
+        prices = [float(r["price"]) for r in sold if r.get("price")]
+        life = [v for v in (ts._lifespan_hours(r) for r in sold) if v is not None]
+        active = [r for r in g if r["status"] == "active"]
+        offers = [int(float(r["offers"])) for r in active if r.get("offers") not in ("", None)]
+        types = collections.Counter(k[1] for k in map(product_key, sold) if k)
+        out.append({
+            "brand": brand,
+            "confirmed_sold_30d": len(sold),
+            "trend_pct": round((recent - earlier) * 100 / earlier) if earlier else None,
+            "sold_recent_half": recent, "sold_earlier_half": earlier,
+            "median_sold_price": round(statistics.median(prices), 2) if prices else "",
+            "median_days_to_sell": round(statistics.median(life) / 24, 1) if life else "",
+            "n_with_posting_date": len(life),
+            "active_listings": len(active),
+            "median_offers_active": statistics.median(offers) if offers else "",
+            "max_offers_active": max(offers) if offers else "",
+            "n_offers_measured": len(offers),
+            "top_products": "; ".join(f"{t}: {n} sold" for t, n in types.most_common(5)),
+            "source_listings": " ".join("https://www.vinted.fr/items/" + r["id"] for r in sold[:3]),
+        })
+    out.sort(key=lambda b: (-b["confirmed_sold_30d"], b["active_listings"]))
+    return out
 
 
 def rank_products(rows, days=30, min_sold=3, now=None):
@@ -221,12 +277,29 @@ def main():
     ap.add_argument("--min-sold", type=int, default=3)
     ap.add_argument("--top", type=int, default=5)
     ap.add_argument("--out", default="")
+    ap.add_argument("--by", choices=("product", "brand"), default="product")
+    ap.add_argument("--sort", choices=("sales", "trend"), default="sales", help="brand ranking order")
+    ap.add_argument("--page-brands-only", action="store_true",
+                    help="brand ranking: only brands read from the item page (old files guessed brand from the title)")
     a = ap.parse_args()
     files = a.files or _sweep_files()
     if not files:
         print("no category sweep files found (tracked_keywords.txt cat: lines / tracking/*.csv); nothing to do")
         return
     rows = [r for f in files for r in csv.DictReader(open(f, encoding="utf-8"))]
+    if a.by == "brand":
+        brands = rank_brands(rows, a.days, a.min_sold, page_brands_only=a.page_brands_only)
+        if a.sort == "trend":  # 'new' (no sales in the earlier half) first, then by % change
+            brands.sort(key=lambda b: (b["trend_pct"] is not None, -(b["trend_pct"] or 0), -b["confirmed_sold_30d"]))
+        print(f"{len(rows)} listings -> {len(brands)} brands with >= {a.min_sold} confirmed sales in {a.days} days")
+        for i, b in enumerate(brands[: a.top], 1):
+            tr = "new" if b["trend_pct"] is None else f"{b['trend_pct']:+d}%"
+            print(f"{i:>3}. {b['brand']}: {b['confirmed_sold_30d']} sold (trend {tr}) · median €{b['median_sold_price']}"
+                  f" · {b['median_days_to_sell'] or '?'} days to sell · {b['active_listings']} active"
+                  f" · offers max {b['max_offers_active'] if b['max_offers_active'] != '' else '-'}"
+                  f"\n     {b['top_products']}")
+        _write(a.out, brands)
+        return
     prods, ngroups, unid = rank_products(rows, a.days, a.min_sold)
     print(f"{len(rows)} listings -> {ngroups} products (brand + type + colour + size identified); {unid} unidentified (not counted); "
           f"{len(prods)} products with >= {a.min_sold} confirmed sales in {a.days} days")
@@ -239,11 +312,15 @@ def main():
     print(f"\n{sum(p['passes_alert_rule'] for p in prods)} of {len(prods)} products pass the alert rule "
           "(>=30 confirmed sales/30d, competition not High, score >=70)")
     print("note: for category-sweep files, time to sell is a lower bound (see module docstring)")
-    if a.out:  # written even when empty, so a quiet run still leaves a (header-only) file
-        with open(a.out, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=list(prods[0].keys()) if prods else ["product"])
-            w.writeheader(); w.writerows(prods)
-        print("\nsaved", a.out)
+    _write(a.out, prods)
+
+
+def _write(path, rows):
+    if path:  # written even when empty, so a quiet run still leaves a (header-only) file
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else ["product"])
+            w.writeheader(); w.writerows(rows)
+        print("\nsaved", path)
 
 
 if __name__ == "__main__":

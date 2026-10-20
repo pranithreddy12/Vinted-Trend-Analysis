@@ -158,6 +158,7 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt")
 )
 echo [!date! !time!] START product discovery >> "%LOGFILE%"
 %PYTHON% product_groups.py --top 5 --out discovered_products.csv >> "%LOGFILE%" 2>&1
+%PYTHON% product_groups.py --by brand --top 20 --out brand_ranking.csv >> "%LOGFILE%" 2>&1
 echo [!date! !time!] END   product discovery - exit code !errorlevel! >> "%LOGFILE%"
 endlocal
 echo [%date% %time%] === run complete === >> "%LOGFILE%"
