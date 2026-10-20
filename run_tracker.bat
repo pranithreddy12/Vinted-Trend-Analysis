@@ -125,6 +125,15 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt")
       set "VINTED_CATEGORY_NAME=!cat_name!"
       %PYTHON% track_sales.py >> "%LOGFILE%" 2>&1
       set "rc=!errorlevel!"
+      if "!rc!"=="4" (
+        echo [!date! !time!] category !cat_id! could not reach Vinted - restarting Chrome and retrying once >> "%LOGFILE%"
+        call :restart_chrome
+        call :probe_chrome
+        if not errorlevel 1 (
+          %PYTHON% track_sales.py >> "%LOGFILE%" 2>&1
+          set "rc=!errorlevel!"
+        )
+      )
       echo [!date! !time!] END   category !cat_id! !cat_name! - exit code !rc! >> "%LOGFILE%"
       set "VINTED_CATALOG_ID="
       set "VINTED_CATEGORY_NAME="
@@ -133,11 +142,23 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt")
       echo [!date! !time!] START "!kw!" >> "%LOGFILE%"
       %PYTHON% track_sales.py "!kw!" >> "%LOGFILE%" 2>&1
       set "rc=!errorlevel!"
+      if "!rc!"=="4" (
+        echo [!date! !time!] "!kw!" could not reach Vinted - restarting Chrome and retrying once >> "%LOGFILE%"
+        call :restart_chrome
+        call :probe_chrome
+        if not errorlevel 1 (
+          %PYTHON% track_sales.py "!kw!" >> "%LOGFILE%" 2>&1
+          set "rc=!errorlevel!"
+        )
+      )
       echo [!date! !time!] END   "!kw!" - exit code !rc! >> "%LOGFILE%"
     )
   )
   timeout /t 30 >nul
 )
+echo [!date! !time!] START product discovery >> "%LOGFILE%"
+%PYTHON% product_groups.py --top 5 --out discovered_products.csv >> "%LOGFILE%" 2>&1
+echo [!date! !time!] END   product discovery - exit code !errorlevel! >> "%LOGFILE%"
 endlocal
 echo [%date% %time%] === run complete === >> "%LOGFILE%"
 echo [%date% %time%] === run complete ===

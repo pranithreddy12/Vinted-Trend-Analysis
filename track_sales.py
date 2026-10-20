@@ -1978,9 +1978,31 @@ def _demo() -> None:
     assert _lifespan_hours({"created_at_ts": "", "last_seen": "", "lifespan_hours": "12"}) == 12.0
     # product grouping: brand + type words identify a product; colour/size are variants; no brand = unidentified
     import product_groups as pg
-    assert pg.product_key({"brand": "Zara", "title": "Veste en jean blanche Zara zippée taille 38"}) == ("zara", "veste jean zippée"), pg.product_key({"brand": "Zara", "title": "Veste en jean blanche Zara zippée taille 38"})
+    assert pg.product_key({"brand": "Zara", "title": "Veste en jean blanche Zara zippée taille 38"}) == ("zara", "jacket")
+    assert pg.product_key({"brand": "Zara", "title": "Giacca jeans Zara bianca M"}) == ("zara", "jacket")   # IT == FR
+    assert pg.product_key({"brand": "Zara", "title": "T-shirt Zara noir S"}) == ("zara", "tshirt")
+    assert pg.product_key({"brand": "Inconnu", "title": "Veste en jean"}) is None
+    assert pg.product_key({"brand": "Smeg", "title": "Gourde isotherme Smeg 500 ml crème"}) == ("smeg", "bottle")
+    assert pg.product_key({"brand": "Nao", "title": "Figura porcelana Nao"}) == ("nao", "figurine")
+    assert pg.product_key({"brand": "Nike", "title": "Baskets Nike Air 39"}) == ("nike", "shoes")     # plural
+    assert pg.product_key({"brand": "Maisons du Monde", "title": "Assiettes plates x6"}) == ("maisons du monde", "plate")
+    assert pg.product_key({"brand": "Ikea", "title": "Kallax étagère"}) == ("ikea", "kallax")          # fallback word
+    assert pg.product_key({"brand": "Accessories", "title": "Veste en jean"}) is None
     assert pg.product_key({"brand": "", "title": "Veste en jean"}) is None
     assert pg.product_key({"brand": "Zara", "title": "Zara blanc S"}) is None
+    # discovery ranking: 30 sold in-window + 3 active -> alert-rule pass
+    zrows = []
+    for i in range(30):
+        zrows.append({"id": f"s{i}", "title": "Veste Zara noire", "brand": "Zara", "status": "sold", "price": "20",
+                      "created_at_ts": str(int(t_pub.timestamp())), "last_seen": "2026-10-11 06:00:00",
+                      "lifespan_hours": "", "color": "", "size": ""})
+    for i in range(3):
+        zrows.append({"id": f"a{i}", "title": "Veste Zara noire", "brand": "Zara", "status": "active", "price": "25",
+                      "created_at_ts": "", "last_seen": "2026-10-11 06:00:00", "lifespan_hours": "",
+                      "color": "", "size": ""})
+    zp = pg.rank_products(zrows)[0][0]
+    assert zp["product"] == "zara jacket" and zp["confirmed_sold_30d"] == 30, zp
+    assert zp["competition_level"] == "Low" and zp["passes_alert_rule"] is True, zp
     # Smeg bottle watch keeps drinkware, drops appliances; drinkware-only brands are untouched
     assert not fr.is_off_product_type("Gourde isotherme Smeg 500 ml rose", "smeg tumbler")
     assert not fr.is_off_product_type("Borraccia SMEG rosa 500 ml", "smeg tumbler")
