@@ -1805,7 +1805,7 @@ def main():
     # Rows tracked before the product-type filter (e.g. Smeg kettles/fridges under "smeg
     # tumbler") would otherwise all look 'disappeared' and be queued for sold-verification, and
     # kettle sales would pollute the bottle numbers. Move them to an archive CSV instead.
-    off = {i: r for i, r in tracking.items() if fr.is_off_product_type(r.get("title", ""), keyword)}
+    off = {i: r for i, r in tracking.items() if fr.is_off_product_type(r.get("title", ""), keyword, r.get("category", ""))}
     if off:
         arch = path.replace(".csv", "_offtype_archive.csv")
         new_file = not os.path.exists(arch)
@@ -2088,6 +2088,8 @@ def _demo() -> None:
     assert fr.is_off_product_type("Smeg waterkoker 0,8L", "smeg tumbler")
     assert fr.is_off_product_type("Étagère porte bouteilles frigo Smeg", "smeg tumbler")
     assert not fr.is_off_product_type("Owala FreeSip pink", "owala bottle")
+    assert fr.is_off_product_type("Smeg porsche", "smeg tumbler", "Bouilloires")       # category wins
+    assert not fr.is_off_product_type("Smeg porsche", "smeg tumbler", "Gourdes")
     assert build_variant("Smeg gourde 500 ml crème", "Smeg", "", "") == "0.5l cream"
     # day-rounded publish time landing ~1h after last_seen -> 0h, never negative
     assert _lifespan_hours({"created_at_ts": str(int(t_pub.timestamp()) + 3600),

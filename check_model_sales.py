@@ -32,7 +32,7 @@ def check(files, brand, color="", cap="", line="", hours=48):
             if r["id"] in seen or brand.lower() not in (r["title"] + " " + r.get("brand", "")).lower():
                 continue
             seen.add(r["id"])
-            if fr.is_off_product_type(r["title"], f"{brand} tumbler"):
+            if fr.is_off_product_type(r["title"], f"{brand} tumbler", r.get("category", "")):
                 continue  # e.g. a Smeg kettle in a Smeg bottle file (no-op for other brands)
             v = (r.get("variant") or "").lower() or ts.build_variant(
                 r["title"], r.get("brand", ""), r.get("color", ""), r.get("size", ""))

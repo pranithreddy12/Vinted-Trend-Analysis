@@ -666,13 +666,16 @@ def title_capacity_ml(title: str) -> float:
     return v * {"ml": 1.0, "cl": 10.0, "l": 1000.0, "oz": 29.5735}[m.group(2).lower()]
 
 
-def is_off_product_type(title: str, keyword: str) -> bool:
+def is_off_product_type(title: str, keyword: str, category: str = "") -> bool:
     """True when `title` is clearly not the product TYPE the watch follows. Only applies to a
     mixed-range brand + a container word in the keyword (e.g. 'smeg tumbler'); kept = names
-    drinkware, or has a drinkware-sized capacity (<=1 L; kettles are 1.7 L)."""
+    drinkware, or has a drinkware-sized capacity (<=1 L; kettles are 1.7 L). Vinted's own
+    category (item page, when known) decides alone: "Smeg porsche" titles are kettles too."""
     ktoks = set(re.findall(r"[a-zà-ÿ0-9.]+", (keyword or "").lower()))
     if not (ktoks & _MIXED_RANGE_BRANDS and ktoks & _GENERIC_CONTAINER_WORDS):
         return False
+    if category:
+        return not any(s in category.lower() for s in _DRINKWARE_STEMS)
     tl = (title or "").lower()
     if any(s in tl for s in _NOT_DRINKWARE_STEMS):
         return True
