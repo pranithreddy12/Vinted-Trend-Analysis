@@ -1435,6 +1435,7 @@ _ATTR_JS = """() => {
           crumbs: [...document.querySelectorAll("[itemprop='title']")].map(e => e.innerText.trim())};
 }"""
 _PAGE_DETAILS = {}  # item_id -> attributes; filled by _verify_sold_from_page, applied by verify_disappearances
+_LOGGED_OUT_PAGES = [0]  # item pages seen logged out during verification (sold status unreadable)
 
 
 def _details_from_attrs(a: dict, now: datetime) -> dict:
@@ -1481,6 +1482,18 @@ def _verify_sold_from_page(page, item_id: str) -> str:
     if status == "unavailable":
         return "removed"
     if status == "active":
+        # "active" only means no Sold badge was found. Logged out, Vinted shows a SOLD item with a
+        # Buy button and no badge (checked 2026-10-20 on items/10141891209), and a page that never
+        # rendered has no badge either: both would wrongly revert a sale. Trust it only on a
+        # rendered (attributes read), logged-in page; otherwise leave it unverified.
+        try:
+            logged_out = page.locator("[data-testid^='header--login-button']").count() > 0
+        except Exception:
+            logged_out = True
+        if logged_out:
+            _LOGGED_OUT_PAGES[0] += 1
+        if logged_out or not _PAGE_DETAILS.get(item_id):
+            return "disappeared"
         return "active"                          # still live — relist/glitch, revert
     return "disappeared"
 
@@ -1576,6 +1589,9 @@ def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2
           f"relisted/active: {tally['active']} · unverified: {tally['disappeared']}")
     if _cdp_dead():
         print("   ⚠️  Chrome stopped accepting connections — unverified ones retry next run.")
+    if _LOGGED_OUT_PAGES[0]:
+        print(f"   ⚠️  {_LOGGED_OUT_PAGES[0]} item pages showed Vinted LOGGED OUT — sold status can't be read; "
+              "log in again in the tracker Chrome (those listings stay unverified, never reverted).")
     return dict(tally)
 
 
@@ -2060,6 +2076,33 @@ def _demo() -> None:
         assert _trk["n"]["category"] == "Chaussures de course" and _trk["n"]["created_at_ts"], _trk
     finally:
         globals()["_verify_sold_worker"] = _real_w
+
+    # "active" (no Sold badge) is trusted only on a rendered, logged-in page
+    class _Loc:
+        def __init__(self, n):
+            self.n = n
+
+        def count(self):
+            return self.n
+
+    class _Page:
+        def __init__(self, logged_out, attrs):
+            self.logged_out, self.attrs = logged_out, attrs
+
+        def goto(self, *a, **k):
+            return type("R", (), {"status": 200})()
+
+        def locator(self, sel):
+            return _Loc(1 if (self.logged_out and "login-button" in sel) else 0)
+
+        def evaluate(self, js):
+            return self.attrs
+
+    _attrs = {"brand": "Nike", "size": "43", "crumbs": _crumbs}
+    assert _verify_sold_from_page(_Page(False, _attrs), "p1") == "active"
+    assert _verify_sold_from_page(_Page(True, _attrs), "p2") == "disappeared" and _LOGGED_OUT_PAGES[0] == 1
+    assert _verify_sold_from_page(_Page(False, {}), "p3") == "disappeared"   # page never rendered
+    _LOGGED_OUT_PAGES[0] = 0
     assert pg.product_key({"brand": "", "title": "Veste en jean"}) is None
     assert pg.product_key({"brand": "Zara", "title": "Zara blanc S"}) is None
     # discovery ranking: 30 sold in-window + 3 active -> alert-rule pass
