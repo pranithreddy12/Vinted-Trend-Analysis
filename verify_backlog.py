@@ -31,8 +31,11 @@ ids = (sold + pg.verification_order(tracking))[: a.max]
 print(f"{a.file}: {len(tracking)} listings, checking {len(ids)} "
       f"({min(len(sold), len(ids))} confirmed sales to repair, the rest unverified disappeared)")
 ts.verify_disappearances(tracking, a.file, ids)
+# only a page Vinted has really deleted is "tried"; one that didn't load (session expired, Chrome
+# down) must be retried next pass
+gone = [i for i in sold if i in ids and tracking[i]["status"] == "removed"]
 for i in sold:
     tracking[i]["status"], tracking[i]["sale_confirmed"] = "sold", True
 ts.save_tracking(a.file, tracking)
 with open(tried_path, "a") as f:
-    f.write("".join(i + "\n" for i in sold if i in ids))
+    f.write("".join(i + "\n" for i in gone))
