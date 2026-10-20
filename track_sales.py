@@ -2063,7 +2063,24 @@ def _demo() -> None:
         "brand": "", "category": "Bougies", "category_path": "Maison > Décoration > Bougies"}
     assert _details_from_attrs({"brand": "Nike", "crumbs": []}, _now) == {}  # page didn't render: change nothing
     assert pg.identified_key({"brand": "Nike", "title": "Scarpe LunarTempo", "size": "43", "color": "Bordeaux, Noir",
-                              "category": "Chaussures de course"}) == ("nike", "shoes")
+                              "category": "Chaussures de course"}) == ("nike", "shoes", "lunartempo")
+    # per-family identity (client's categories): shoes need a model + colour + size, face care a name + volume,
+    # pans a diameter, kitchenware only brand + type
+    _sp = "Femmes > Chaussures > Chaussures de sport > Chaussures de course"
+    _shoe = {"brand": "Nike", "title": "Nike Pegasus 40 noir", "size": "38", "color": "Noir", "category_path": _sp}
+    assert pg.identified_key(_shoe) == ("nike", "shoes", "pegasus") and pg.variant_of(_shoe) == "black 38"
+    assert pg.identified_key(dict(_shoe, title="Nike running noir")) is None            # no model word
+    _face = {"brand": "Caudalie", "title": "Caudalie Vinoperfect sérum éclat 30 ml",
+             "category_path": "Femmes > Beauté > Soins du visage > Sérums"}
+    _fk = pg.identified_key(_face)
+    assert _fk and len(_fk) == 3 and _fk[0] == "caudalie" and pg.variant_of(_face) == "30ml", _fk
+    assert pg.identified_key(dict(_face, title="Caudalie Vinoperfect sérum éclat")) is None   # no volume
+    _pan = {"brand": "Tefal", "title": "Poêle Tefal Ingenio 28 cm", "category_path": "Maison > Cuisine > Poêles"}
+    assert pg.identified_key(_pan) == ("tefal", "pan") and pg.variant_of(_pan) == "28cm"
+    assert pg.identified_key(dict(_pan, title="Poêle Tefal Ingenio")) is None              # no diameter
+    _kit = {"brand": "Le Creuset", "title": "Cocotte Le Creuset",
+            "category_path": "Maison > Cuisine > Ustensiles de cuisine"}
+    assert len(pg.identified_key(_kit)) == 2, pg.identified_key(_kit)
     assert pg.product_key({"brand": "Zara", "title": "Zara", "category": "Montres"}) == ("zara", "montres")
     # check_model_sales: a row read on its page (category set) matches on the PAGE colour, not the old stored variant
     import check_model_sales as cms, tempfile

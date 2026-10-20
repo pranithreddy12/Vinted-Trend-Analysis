@@ -3,11 +3,15 @@ and rank products by VERIFIED sales. Read-only on the tracking CSV.
 
   python product_groups.py tracking/home.csv --days 30 --min-sold 3 --top 5 --out discovered_products.csv
 
-Rule that prevents mixing: a listing joins a product only if brand (the seller-entered "Marque"
-from the catalog), product type, colour AND size/capacity are all identified. Anything else is
-'unidentified' and is never counted in any product's figures (what the client was promised
-2026-10-20). Placeholder brands ("Inconnu", "Pas de marque"...) are unidentified too.
-A product is its brand + type. The type comes from Vinted's own category when the row has one
+Rule that prevents mixing: a listing joins a product only when it is fully identified for its
+family (Vinted's category path decides the family); anything else is 'unidentified' and is never
+counted in any product's figures (what the client was promised 2026-10-20). All families need a
+real brand (the seller-entered "Marque"); placeholder brands ("Inconnu", "Pas de marque"...) are
+unidentified too. shoes: brand + model (first two title words that are not type/colour/size words)
+with colour AND size. face care: brand + type + product name, with a volume ("50 ml"). pans: brand
+with a diameter ("28 cm"). kitchenware: brand + type. everything else (clothing...): brand + type
+with colour AND size/capacity.
+The type comes from Vinted's own category when the row has one
 (read from the item page during sold verification, e.g. "Chaussures de course" -> shoes); else
 from the title: the first recognised type word, mapped to one canonical English type
 across FR/EN/IT/ES/NL/DE ("veste"/"giacca"/"jacket" -> jacket); when no type word is recognised
@@ -24,6 +28,7 @@ image recognition (Phase 5) is the later fix.
 import argparse, collections, csv, os, re, statistics
 from datetime import datetime, timedelta, timezone
 
+import fetch_results as fr
 import track_sales as ts
 
 _STOP = set("""de du la le les en et pour avec sans neuf neuve neufs tres très bon bonne etat état taille
@@ -101,6 +106,7 @@ _TYPES = {
     "sunglasses": ("lunettes", "sunglasses", "occhiali", "gafas"),
     "perfume": ("parfum", "profumo", "perfume"),
     "set": ("ensemble", "completo", "conjunto"),
+    "pan": ("poêle", "poele", "casserole", "sauteuse", "wok", "pan", "padella", "sartén", "sarten", "pfanne", "koekenpan"),
 }
 _TYPE_OF = {w: t for t, ws in _TYPES.items() for w in ws}
 
@@ -149,14 +155,84 @@ def _variant_parts(row: dict) -> tuple:
     return col, size or cap
 
 
+def _family(row: dict) -> str:
+    """shoes | face | pan | kitchen | other: decides which parts a listing needs to be identified.
+    Vinted's category path (or deepest category) when the row has one, else the title's type."""
+    path = (row.get("category_path") or row.get("category") or "").lower()
+    if path:
+        if any(w in path for w in ("chaussure", "basket", "sneaker")):
+            return "shoes"
+        if "visage" in path or "soin" in path:
+            return "face"
+        if any(w in path for w in ("poêle", "poele", "casserole", "sauteuse", "wok")):
+            return "pan"
+        if "cuisine" in path:
+            return "kitchen"
+    k = product_key(row)
+    return k[1] if k and k[1] in ("shoes", "pan") else "other"
+
+
+# Words that describe a product but are not its model name ("Nike running noir" has no model).
+_MODEL_FILLER = {"running", "sport", "sports", "trainers", "trainer", "runner", "course", "gym", "fitness",
+                 "training", "ml", "cl", "oz", "kg", "cm", "mm"}
+
+
+def _model_of(row: dict, exclude: str = "") -> str:
+    """First two title words left after removing brand, filler, colours, sizes, numbers, type words
+    and single letters, in title order; '' when none (the listing names no model)."""
+    btoks = set(_tokens(_brand_of(row)))
+    title = (row.get("title") or "").lower().replace("t-shirt", "tshirt").replace("t shirt", "tshirt")
+    toks = [w for w in _tokens(title)
+            if w not in btoks and w not in _STOP and w not in _MODEL_FILLER and w != exclude
+            and not _colour_of(w) and not _SIZE_RE.match(w) and not any(c.isdigit() for c in w)
+            and not _type_of(w) and len(w) > 1]
+    return " ".join(toks[:2])
+
+
+def _volume_ml(title: str) -> int:
+    return int(round(fr.title_capacity_ml(title)))
+
+
+_DIAM_RE = re.compile(r"(?<!\d)(1\d|2\d|3\d|40)\s?cm\b")
+
+
+def _diameter_cm(title: str) -> str:
+    m = _DIAM_RE.search((title or "").lower())
+    return f"{m.group(1)}cm" if m else ""
+
+
 def variant_of(row: dict) -> str:
+    fam = _family(row)
+    if fam == "shoes":
+        return " ".join(x for x in _variant_parts(row) if x) or "-"
+    if fam == "face":
+        return f"{_volume_ml(row.get('title', ''))}ml"
+    if fam == "pan":
+        return _diameter_cm(row.get("title", "")) or "-"
     return " ".join(x for x in _variant_parts(row) if x) or "-"
 
 
 def identified_key(row: dict):
-    """product_key, but only when colour AND size/capacity are identified too; else None."""
+    """The product key when the listing is fully identified for its family, else None (unidentified,
+    never counted). shoes: brand + model, with colour AND size. face care: brand + type + product name,
+    with a volume. pan: brand + diameter. kitchen: brand + type. other (clothing...): brand + type,
+    with colour AND size/capacity."""
     k = product_key(row)
-    return k if k and all(_variant_parts(row)) else None
+    if not k:
+        return None
+    brand, typ = k
+    title, fam = row.get("title", ""), _family(row)
+    if fam == "shoes":
+        model = _model_of(row)
+        return (brand, "shoes", model) if model and all(_variant_parts(row)) else None
+    if fam == "face":
+        model = _model_of(row, typ)
+        return (brand, typ, model) if model and _volume_ml(title) > 0 else None
+    if fam == "pan":
+        return (brand, "pan") if _diameter_cm(title) else None
+    if fam == "kitchen":
+        return k
+    return k if all(_variant_parts(row)) else None
 
 
 def verification_order(tracking: dict) -> list:
@@ -227,7 +303,8 @@ def rank_products(rows, days=30, min_sold=3, now=None):
         else:
             unidentified += 1
     out = []
-    for (brand, typ), g in groups.items():
+    for k, g in groups.items():
+        brand, typ = k[0], " ".join(k[1:])
         sold = [r for r in g if r["status"] == "sold" and r.get("last_seen") and ts._parse(r["last_seen"]) >= since]
         if len(sold) < min_sold:
             continue
@@ -239,7 +316,7 @@ def rank_products(rows, days=30, min_sold=3, now=None):
         opp = ts.compute_variant_opportunity(per_month, median_days)
         comp = ts.competition_label(active)
         out.append({
-            "product": f"{brand} {typ}", "brand": brand, "type": typ,
+            "product": " ".join(k), "brand": brand, "type": typ,
             "confirmed_sold_30d": len(sold),
             "est_sales_per_month": round(per_month, 1),
             "median_sold_price": round(statistics.median(prices), 2) if prices else "",
