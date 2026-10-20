@@ -113,13 +113,17 @@ def _lifespan_hours(row: dict):
         if cts and ls:
             v = (_parse(ls) - datetime.fromtimestamp(int(float(cts)), tz=timezone.utc)
                  ).total_seconds() / 3600
-            if v >= 0:
-                return round(v, 1)
+            # publish time is only day-accurate ("il y a N jours"), so a quick sale can land a few
+            # hours "before" it was posted (client log 2026-10-19: median -0.9h): that is ~0h, not
+            # a negative; anything further off is bad data.
+            if v >= -24:
+                return round(max(v, 0.0), 1)
     except (ValueError, OverflowError, OSError):
         pass
     try:
         lh = row.get("lifespan_hours")
-        return float(lh) if lh not in ("", None) else None
+        v = float(lh) if lh not in ("", None) else None
+        return v if v is None or v >= 0 else None
     except ValueError:
         return None
 
@@ -147,6 +151,12 @@ def update_tracking(tracking: dict, current_items: list, now: datetime) -> tuple
             row = tracking[iid]
             row["last_seen"] = now_str
             # Backfill brand/size/variant from the catalog (free — no page load needed).
+            if item.get("brand_is_real"):
+                # seller-entered brand/size from the catalog label: authoritative, and replaces
+                # the first-title-word guess older sweep rows were stored with
+                row["brand"] = brand_title
+                if size_title:
+                    row["size"] = size_title
             if brand_title and not row.get("brand"):
                 row["brand"] = brand_title
             if size_title and not row.get("size"):
@@ -575,7 +585,9 @@ def build_variant(title: str, brand: str, color: str, size: str = "") -> str:
     40oz" title names no line, so it's imputed to the dominant line at that size+colour
     rather than fragmenting off on its own.
     """
-    toks = fr._tokenize((title or "").lower())
+    # "500 ml" / "0,5 L" written with a space would otherwise split into two tokens and the
+    # capacity (the model dimension for Smeg 0.5 vs 0.6 L) would be lost.
+    toks = fr._tokenize(re.sub(r"(\d)\s+(ml|cl|l|oz)\b", r"\1\2", (title or "").lower()))
     cap = ""
     for t in toks:
         cap = canonical_capacity(t)
@@ -1747,6 +1759,22 @@ def main():
 
     now = datetime.now(timezone.utc)
     tracking = load_tracking(path)
+    # Rows tracked before the product-type filter (e.g. Smeg kettles/fridges under "smeg
+    # tumbler") would otherwise all look 'disappeared' and be queued for sold-verification, and
+    # kettle sales would pollute the bottle numbers. Move them to an archive CSV instead.
+    off = {i: r for i, r in tracking.items() if fr.is_off_product_type(r.get("title", ""), keyword)}
+    if off:
+        arch = path.replace(".csv", "_offtype_archive.csv")
+        new_file = not os.path.exists(arch)
+        with open(arch, "a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=TRACK_FIELDS)
+            if new_file:
+                w.writeheader()
+            for r in off.values():
+                w.writerow({k: r.get(k, "") for k in TRACK_FIELDS})
+        for i in off:
+            del tracking[i]
+        print(f"   🧹 moved {len(off)} off-product-type rows (not {keyword.split()[-1]}s) to {arch}")
     first_run = len(tracking) == 0
     # One-time cleanup of publish times written by the withdrawn photo-timestamp fallback.
     _marker = os.path.join(TRACK_DIR, ".photo_ts_repaired")
@@ -1770,7 +1798,11 @@ def main():
     prior_active = sum(1 for r in tracking.values()
                        if r.get("status") == "active" and r.get("last_seen") == _last_run)
     current_ids = {str(i.get("id")) for i in raw if i.get("id")}
-    if not first_run and prior_active >= 20 and len(current_ids) < prior_active * 0.5:
+    # A category sweep is capped (~960 per domain), so it can never see most of its tracked
+    # listings (client log 2026-10-19: women 3211 vs 8037, skipped twice). For those, only an
+    # outright collapse counts as a failed fetch.
+    _floor = 0.1 if seedless else 0.5
+    if not first_run and prior_active >= 20 and len(current_ids) < max(prior_active * _floor, 500 if seedless else 0):
         print(
             f"⚠️  Catalog returned only {len(current_ids)} listings vs {prior_active} "
             f"active previously — almost certainly a failed/partial fetch (expired "
@@ -1788,6 +1820,13 @@ def main():
         now_str = _fmt(now)
         gone_ids = [iid for iid, r in tracking.items()
                     if r["status"] == "disappeared" and r.get("disappeared_at") == now_str]
+        if seedless:
+            # A category sweep sees ~960 listings/domain, so thousands "disappear" per run and the
+            # 300/run cap used to verify only that run's first arrivals; the rest were never
+            # retried (client files 2026-10-20: 25,711 unverified vs 215 confirmed sold). Spend
+            # the cap on the whole backlog instead, repeat products first.
+            import product_groups
+            gone_ids = product_groups.verification_order(tracking)
         try:
             verify_disappearances(tracking, path, gone_ids)
             save_tracking(path, tracking)
@@ -1937,6 +1976,23 @@ def _demo() -> None:
     assert _lifespan_hours({"created_at_ts": "", "last_seen": "2026-10-11 12:00:00",
                             "lifespan_hours": ""}) is None
     assert _lifespan_hours({"created_at_ts": "", "last_seen": "", "lifespan_hours": "12"}) == 12.0
+    # product grouping: brand + type words identify a product; colour/size are variants; no brand = unidentified
+    import product_groups as pg
+    assert pg.product_key({"brand": "Zara", "title": "Veste en jean blanche Zara zippée taille 38"}) == ("zara", "veste jean zippée"), pg.product_key({"brand": "Zara", "title": "Veste en jean blanche Zara zippée taille 38"})
+    assert pg.product_key({"brand": "", "title": "Veste en jean"}) is None
+    assert pg.product_key({"brand": "Zara", "title": "Zara blanc S"}) is None
+    # Smeg bottle watch keeps drinkware, drops appliances; drinkware-only brands are untouched
+    assert not fr.is_off_product_type("Gourde isotherme Smeg 500 ml rose", "smeg tumbler")
+    assert not fr.is_off_product_type("Borraccia SMEG rosa 500 ml", "smeg tumbler")
+    assert fr.is_off_product_type("Bouilloire SMEG 1,7 L bleu", "smeg tumbler")
+    assert fr.is_off_product_type("Smeg waterkoker 0,8L", "smeg tumbler")
+    assert fr.is_off_product_type("Étagère porte bouteilles frigo Smeg", "smeg tumbler")
+    assert not fr.is_off_product_type("Owala FreeSip pink", "owala bottle")
+    assert build_variant("Smeg gourde 500 ml crème", "Smeg", "", "") == "0.5l cream"
+    # day-rounded publish time landing ~1h after last_seen -> 0h, never negative
+    assert _lifespan_hours({"created_at_ts": str(int(t_pub.timestamp()) + 3600),
+                            "last_seen": "2026-10-10 06:00:00", "lifespan_hours": "-0.9"}) == 0.0
+    assert _lifespan_hours({"created_at_ts": "", "last_seen": "", "lifespan_hours": "-3"}) is None
     trk = {"a": {"id": "a", "status": "active", "created_at_ts": str(int(t_pub.timestamp())),
                  "first_seen": "2026-10-10 07:00:00", "last_seen": "2026-10-11 12:00:00",
                  "missed_runs": 0, "title": "", "brand": "", "size": "", "color": "", "variant": ""}}

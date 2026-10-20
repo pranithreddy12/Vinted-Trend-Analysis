@@ -320,13 +320,26 @@ def _map_product_item(pi: dict, keyword: str) -> dict:
                 break
         if brand:
             break
-    if not brand:
-        brand = title_words[0] if title_words else ""
+    # The page payload DOES carry the seller-entered brand and size, in itemBox.accessibilityLabel
+    # ("<title>, Marque: Zara, État: ..., Taille: S, 39.95 €, ..."; verified live 2026-10-21 on
+    # category and keyword searches). Brand is absent for no-brand items. Prefer it over the
+    # keyword/first-word guesses above, which polluted brand for every seedless sweep row.
+    label = (pi.get("itemBox") or {}).get("accessibilityLabel") or ""
+    m_brand = re.search(r"Marque:\s*([^,]+?)(?:,\s*(?:État|Taille):|,\s*[\d.]+\s*€|$)", label)
+    m_size = re.search(r"Taille:\s*([^,]+?)(?:,\s*[\d.]+\s*€|$)", label)
+    real_brand = (m_brand.group(1).strip() if m_brand else "")
+    if real_brand.lower() in ("pas de marque", "no brand", "sans marque"):
+        real_brand = ""
+    if m_brand:
+        brand = real_brand
+    elif not brand and not label:
+        brand = title_words[0] if title_words else ""  # no label at all: legacy first-word guess
     return {
         "id": pi.get("id"),
         "title": title,
         "brand_title": brand,
-        "size_title": "",  # not on the new page payload — see docstring
+        "brand_is_real": bool(label),  # label parsed: empty brand means genuinely no brand
+        "size_title": m_size.group(1).strip() if m_size else "",
         "created_at_ts": "",  # not on the new page payload — enrichment backfills this
         "favourite_count": pi.get("favouriteCount") or 0,
         "view_count": 0,  # not exposed on the new page payload
@@ -617,6 +630,58 @@ def normalize_search_query(keyword: str) -> str:
     return " ".join(kept).strip() or keyword
 
 
+# Brands that sell far more than drinkware (client 2026-10-19: "Smeg cream" mixed 500 ml insulated
+# bottles with kettles/fridges/toasters; ~88% of tracked Smeg listings weren't bottles). For these,
+# a watch whose keyword names a container ("smeg tumbler") only follows listings that show
+# POSITIVE drinkware evidence. Brands that only make drinkware (Stanley, Owala) are not listed:
+# their bare titles ("Owala FreeSip pink") would be wrongly dropped.
+_MIXED_RANGE_BRANDS = {"smeg"}
+_DRINKWARE_STEMS = (
+    "bottle", "bouteille", "gourde", "flasche", "fles", "botella", "borraccia", "tumbler", "mug",
+    "tasse", "becher", "beker", "cup", "taza", "vaso", "bicchiere", "thermos", "isotherm",
+    "insulated", "isolier", "isolé", "isole", "termico", "térmic", "thermal", "flask", "gobelet",
+    "trinkhalm", "straw", "paille",
+)
+# Appliance/accessory words that win even when a drinkware word also appears ("bottle rack for
+# Smeg fridge", "Wasserkocher 0,8 l", "kettle + thermos set").
+_NOT_DRINKWARE_STEMS = (
+    "bouilloire", "kettle", "wasserkocher", "waterkoker", "hervidor", "bollitore", "toaster",
+    "grille-pain", "koffiemachine", "koffiemolen", "kaffeemaschine", "coffee machine",
+    "machine à café", "machine a cafe", "bean to cup", "bean‑to‑cup", "bean-to-cup", "espresso",
+    "frigo", "fridge", "kühlschrank", "koelkast", "étagère", "etagere", "cocotte", "mixer",
+    "blender", "batidora",
+)
+_CAP_IN_TITLE_RE =re.compile(r"(?<![\d.,])(\d+(?:[.,]\d+)?)\s?(ml|cl|l|oz)\b", re.I)
+
+
+def title_capacity_ml(title: str) -> float:
+    """First capacity found in a title as millilitres ('500 ml', '0,5L', '17oz'); 0 if none."""
+    m = _CAP_IN_TITLE_RE.search(title or "")
+    if not m:
+        return 0.0
+    try:
+        v = float(m.group(1).replace(",", "."))
+    except ValueError:
+        return 0.0
+    return v * {"ml": 1.0, "cl": 10.0, "l": 1000.0, "oz": 29.5735}[m.group(2).lower()]
+
+
+def is_off_product_type(title: str, keyword: str) -> bool:
+    """True when `title` is clearly not the product TYPE the watch follows. Only applies to a
+    mixed-range brand + a container word in the keyword (e.g. 'smeg tumbler'); kept = names
+    drinkware, or has a drinkware-sized capacity (<=1 L; kettles are 1.7 L)."""
+    ktoks = set(re.findall(r"[a-zà-ÿ0-9.]+", (keyword or "").lower()))
+    if not (ktoks & _MIXED_RANGE_BRANDS and ktoks & _GENERIC_CONTAINER_WORDS):
+        return False
+    tl = (title or "").lower()
+    if any(s in tl for s in _NOT_DRINKWARE_STEMS):
+        return True
+    if any(s in tl for s in _DRINKWARE_STEMS):
+        return False
+    cap = title_capacity_ml(tl)
+    return not (0 < cap <= 1000)
+
+
 def rank_by_identity(items: list, keyword: str, drop_offbrand: bool = False,
                      offbrand_cap: int | None = None) -> tuple[list, dict]:
     """Assign each item a RELEVANCE TIER vs the query's product identity and return
@@ -671,6 +736,8 @@ def rank_by_identity(items: list, keyword: str, drop_offbrand: bool = False,
         )
         if intended_brands and not brand_ok:
             return 4
+        if is_off_product_type(tl, keyword):
+            return 4  # right brand, wrong product type (kettle/fridge/toaster for a bottle watch)
 
         ic, icol = _first_cap(tl), _first_col(tl)
         size_contra = intent_cap and ic and ic != intent_cap

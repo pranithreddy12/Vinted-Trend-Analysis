@@ -1,0 +1,3 @@
+# name ; tracking glob ; brand ; colour ; capacity ; line      (add one line per product to follow)
+Stanley Quencher H2.0 40oz (1.18L) pink ; tracking/stanley_*.csv ; stanley ; pink ; 40oz ; Quencher
+Smeg cream insulated bottle 500ml ; tracking/smeg_tumbler.csv ; smeg ; cream ; 0.5l ;
