@@ -1464,7 +1464,7 @@ def enrich_publish_times(tracking: dict, path: str, workers: int = 5, todo=None)
 # the seller-entered values (verified live 2026-10-20 on vinted.fr/items/10141891209).
 _ATTR_JS = """() => {
   const t = s => { const e = document.querySelector(s); return e ? e.innerText.trim() : ""; };
-  return {brand: t("[itemprop='name']"), size: t("[itemprop='size']"), color: t("[itemprop='color']"),
+  return {brand: t("[itemprop='name']"), size: t("[itemprop='size']") || t("[data-testid='item-attributes-size_familiar-link']") || t("[itemprop='size_familiar']"), color: t("[itemprop='color']"),
           upload: t("[itemprop='upload_date']"),
           crumbs: [...document.querySelectorAll("[itemprop='title']")].map(e => e.innerText.trim())};
 }"""
@@ -1480,7 +1480,9 @@ def _details_from_attrs(a: dict, now: datetime) -> dict:
         return {}
     brand = (a.get("brand") or "").strip()
     crumbs = [c for c in a["crumbs"] if c and not (brand and c.lower().startswith(brand.lower()))]
-    d = {"brand": brand, "size": (a.get("size") or "").strip(), "color": (a.get("color") or "").strip(),
+    # shoes/bras use itemprop=size ("43"); clothing uses size_familiar ("Taille S", checked 2026-10-21)
+    size = re.sub(r"^(taille|size|größe|taglia|talla|maat)\s*", "", (a.get("size") or "").strip(), flags=re.I)
+    d = {"brand": brand, "size": size, "color": (a.get("color") or "").strip(),
          "category": crumbs[-1] if len(crumbs) > 1 else "",
          "category_path": " > ".join(crumbs) if len(crumbs) > 1 else ""}
     try:
@@ -2107,6 +2109,7 @@ def _demo() -> None:
     assert _details_from_attrs({"crumbs": ["Maison", "Décoration", "Bougies"]}, _now) == {
         "brand": "", "category": "Bougies", "category_path": "Maison > Décoration > Bougies"}
     assert _details_from_attrs({"brand": "Nike", "crumbs": []}, _now) == {}  # page didn't render: change nothing
+    assert _details_from_attrs({"brand": "Zara", "size": "Taille S", "crumbs": ["Femmes", "Vêtements", "Pulls"]}, _now)["size"] == "S"
     assert "created_at_ts" not in _details_from_attrs({"brand": "Nike", "upload": "Il y a 3 semaines",
                                                       "crumbs": _crumbs}, _now)  # too coarse to time a sale
     assert pg.identified_key({"brand": "Nike", "title": "Scarpe LunarTempo", "size": "43", "color": "Bordeaux, Noir",

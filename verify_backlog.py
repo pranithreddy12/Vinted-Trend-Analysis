@@ -26,7 +26,10 @@ tracking = ts.load_tracking(a.file)
 # confirmed sales already tried once: a page Vinted has deleted can't be repaired, don't re-open it every pass
 tried_path = a.file + ".repair_tried"
 tried = set(open(tried_path).read().split()) if os.path.exists(tried_path) else set()
-sold = [i for i, r in tracking.items() if r["status"] == "sold" and not r.get("category") and i not in tried]
+# also re-open checked sales of clothing/shoes still missing a size (read before the size_familiar fix)
+needs_size = lambda r: not r.get("size") and any(w in (r.get("category_path") or "") for w in ("Vêtements", "Chaussures"))
+sold = [i for i, r in tracking.items()
+        if r["status"] == "sold" and (not r.get("category") or needs_size(r)) and i not in tried]
 ids = (sold + pg.verification_order(tracking))[: a.max]
 print(f"{a.file}: {len(tracking)} listings, checking {len(ids)} "
       f"({min(len(sold), len(ids))} confirmed sales to repair, the rest unverified disappeared)")
