@@ -1555,7 +1555,8 @@ def _verify_sold_worker(item_id: str):
                     return item_id, _verify_sold_from_page(page, item_id)
                 finally:
                     page.close()
-                    time.sleep(random.uniform(0.3, 0.9))
+                    # VINTED_PAGE_PAUSE: extra seconds between pages (a hot IP needs a gentler pace)
+                    time.sleep(random.uniform(0.3, 0.9) + float(os.environ.get("VINTED_PAGE_PAUSE", 0)))
         except RateLimited:
             if _begin_hold_become_prober():
                 _probe_until_clear(item_id)

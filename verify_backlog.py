@@ -3,7 +3,7 @@ machine's Chrome, so a client's files can be verified without his tracker runnin
 page visit reads brand, size, colour and Vinted's category, repairing rows recorded by older
 versions (no size, brand guessed from the first title word).
 
-  python verify_backlog.py client_data/women.csv --max 3000
+  python verify_backlog.py client_data/women.csv --max 3000 [--priority 'baskets|sneaker']
 
 Checks every disappeared listing (repeat products first, then newest) plus already-confirmed
 sales that were never repaired; a confirmed sale stays a sale even if its page is gone now. The
@@ -13,6 +13,7 @@ Vinted has deleted comes back 'removed': that lowers confirmed sales, it never i
 """
 import argparse
 import os
+import re
 import sys
 
 import product_groups as pg
@@ -21,6 +22,7 @@ import track_sales as ts
 ap = argparse.ArgumentParser()
 ap.add_argument("file")
 ap.add_argument("--max", type=int, default=3000, help="listings to check this run")
+ap.add_argument("--priority", help="regex on the title: matching listings are checked first (the client's categories)")
 a = ap.parse_args()
 
 tracking = ts.load_tracking(a.file)
@@ -40,7 +42,11 @@ tried = set(open(tried_path).read().split()) if os.path.exists(tried_path) else 
 needs_size = lambda r: not r.get("size") and any(w in (r.get("category_path") or "") for w in ("Vêtements", "Chaussures"))
 sold = [i for i, r in tracking.items()
         if r["status"] == "sold" and (not r.get("category") or needs_size(r)) and i not in tried]
-ids = (sold + pg.verification_order(tracking))[: a.max]
+order = pg.verification_order(tracking)
+if a.priority:
+    rx = re.compile(a.priority, re.I)
+    order = [i for i in order if rx.search(tracking[i]["title"])] + [i for i in order if not rx.search(tracking[i]["title"])]
+ids = (sold + order)[: a.max]
 print(f"{a.file}: {len(tracking)} listings, checking {len(ids)} "
       f"({min(len(sold), len(ids))} confirmed sales to repair, the rest unverified disappeared)")
 ts.verify_disappearances(tracking, a.file, ids)
