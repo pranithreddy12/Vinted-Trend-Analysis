@@ -24,6 +24,18 @@ import track_sales as ts
 LOG = "model_checks_log.csv"
 
 
+def reliability(sold, verified, span_days, window_days):
+    """(level, why): how far a sales figure can be trusted. Low = too few sales, or the data does not
+    cover the window; High = 20+ sales, window covered and 80%+ of sales read on the item page."""
+    if span_days < window_days:
+        return "Low", f"data covers only {span_days:.0f} days of the {window_days:.0f}-day window: the figure is a minimum"
+    if sold < 5:
+        return "Low", f"only {sold} confirmed sales"
+    if sold < 20 or verified < 0.8 * sold:
+        return "Medium", f"{sold} confirmed sales, {verified} read on the item page"
+    return "High", f"{sold} confirmed sales, {verified} read on the item page, window covered"
+
+
 def check(files, brand, color="", cap="", line="", hours=48):
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     rows, seen = [], set()
@@ -47,7 +59,11 @@ def check(files, brand, color="", cap="", line="", hours=48):
             and ts._parse(r["last_seen"]) >= since]
     prices = [float(r["price"]) for r, _ in sold if r.get("price")]
     life = [h for h in (ts._lifespan_hours(r) for r, _ in sold) if h is not None]
+    seen_ts = [ts._parse(r[k]) for r, _ in rows for k in ("first_seen", "last_seen") if r.get(k)]
+    span = (max(seen_ts) - min(seen_ts)).total_seconds() / 86400 if seen_ts else 0
+    level, why = reliability(len(sold), sum(1 for r, _ in sold if r.get("category")), span, hours / 24)
     return {
+        "span_days": span, "reliability": level, "why": why,
         "tracked": len(rows), "active": sum(1 for r, _ in rows if r["status"] == "active"),
         "sold": len(sold), "median_price": round(statistics.median(prices), 2) if prices else "",
         "min_price": min(prices) if prices else "", "max_price": max(prices) if prices else "",
@@ -92,11 +108,18 @@ def main():
                      if c["sold"] else "")
                   + (f" · median time to sell {c['median_hours_to_sell']} h ({c['median_hours_to_sell'] / 24:.1f} days,"
                      f" {c['n_timed']} sales with a posting date)" if c["n_timed"] else ""))
+            print(f"    RELIABILITY: {c['reliability']} - {c['why']} (data {c['span_days']:.1f} days; sales are the "
+                  f"asking price at sale; time to sell is a lower bound for category-sweep files)")
             for r, v in sorted(c["sold_rows"], key=lambda x: x[0]["last_seen"]):
-                print(f"    {r['last_seen']}  €{r['price']:>7}  {v or '-':<12} {r['title'][:55]}")
+                print(f"    {r['last_seen']}  €{r['price']:>7}  {v or '-':<12} {r['title'][:55]}  https://www.vinted.fr/items/{r['id']}")
             w.writerow([stamp, name, a.hours, c["tracked"], c["active"], c["sold"],
                         c["median_price"], c["min_price"], c["max_price"], c["median_hours_to_sell"]])
 
 
 if __name__ == "__main__":
+    assert reliability(30, 28, 25, 30)[0] == "Low"      # data shorter than the window
+    assert reliability(3, 3, 40, 30)[0] == "Low"        # too few sales
+    assert reliability(12, 12, 40, 30)[0] == "Medium"
+    assert reliability(25, 10, 40, 30)[0] == "Medium"   # most sales not read on the page
+    assert reliability(25, 24, 40, 30)[0] == "High"
     main()
