@@ -13,6 +13,7 @@ Vinted has deleted comes back 'removed': that lowers confirmed sales, it never i
 """
 import argparse
 import os
+import sys
 
 import product_groups as pg
 import track_sales as ts
@@ -23,6 +24,15 @@ ap.add_argument("--max", type=int, default=3000, help="listings to check this ru
 a = ap.parse_args()
 
 tracking = ts.load_tracking(a.file)
+# confirmed sales stay sales: remember them before checking, and restore any an interrupted earlier
+# run left marked otherwise (a re-opened sale whose page is gone is checkpointed as "removed" mid-run)
+sold_path = a.file + ".sold_ids"
+if os.path.exists(sold_path):
+    for i in open(sold_path).read().split():
+        if i in tracking and tracking[i]["status"] != "sold":
+            tracking[i]["status"], tracking[i]["sale_confirmed"] = "sold", True
+with open(sold_path, "w") as f:
+    f.write("".join(i + "\n" for i, r in tracking.items() if r["status"] == "sold"))
 # confirmed sales already tried once: a page Vinted has deleted can't be repaired, don't re-open it every pass
 tried_path = a.file + ".repair_tried"
 tried = set(open(tried_path).read().split()) if os.path.exists(tried_path) else set()
@@ -42,3 +52,7 @@ for i in sold:
 ts.save_tracking(a.file, tracking)
 with open(tried_path, "a") as f:
     f.write("".join(i + "\n" for i in gone))
+# A logged-out session can't read Sold: stop (exit 5) instead of grinding through pages it can't use.
+if ts._LOGGED_OUT_PAGES[0] >= max(25, len(ids) // 5):
+    print(f"STOP: {ts._LOGGED_OUT_PAGES[0]} of {len(ids)} pages were logged out - log in again in the tracker Chrome")
+    sys.exit(5)
