@@ -38,9 +38,10 @@ def reliability(sold, verified, span_days, window_days):
 
 def check(files, brand, color="", cap="", line="", hours=48):
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    rows, seen = [], set()
+    rows, seen, stamps = [], set(), []  # stamps: every sighting in the files, not only this product's
     for f in glob.glob(files):
         for r in csv.DictReader(open(f, encoding="utf-8")):
+            stamps += [ts._parse(r[k]) for k in ("first_seen", "last_seen") if r.get(k)]
             if r["id"] in seen or brand.lower() not in (r["title"] + " " + r.get("brand", "")).lower():
                 continue
             seen.add(r["id"])
@@ -59,8 +60,7 @@ def check(files, brand, color="", cap="", line="", hours=48):
             and ts._parse(r["last_seen"]) >= since]
     prices = [float(r["price"]) for r, _ in sold if r.get("price")]
     life = [h for h in (ts._lifespan_hours(r) for r, _ in sold) if h is not None]
-    seen_ts = [ts._parse(r[k]) for r, _ in rows for k in ("first_seen", "last_seen") if r.get(k)]
-    span = (max(seen_ts) - min(seen_ts)).total_seconds() / 86400 if seen_ts else 0
+    span = (max(stamps) - min(stamps)).total_seconds() / 86400 if stamps else 0
     level, why = reliability(len(sold), sum(1 for r, _ in sold if r.get("category")), span, hours / 24)
     return {
         "span_days": span, "reliability": level, "why": why,
