@@ -17,6 +17,21 @@ import track_sales as ts
 from check_model_sales import reliability
 
 
+def _stem(w):
+    return w[:-1] if len(w) > 3 and w.endswith("s") else w
+
+
+def matches(query_tokens, title_words, variant):
+    """Every query word must be found: a colour word (any language) in the listing's colour, a size or
+    capacity in its variant, anything else in the title/product words (singular and plural alike)."""
+    stems, vparts = {_stem(w) for w in title_words}, set(variant.split())
+    for w in query_tokens:
+        col = pg._colour_of(w)
+        if not ((col and col in vparts) or w in vparts or _stem(w) in stems):
+            return False
+    return True
+
+
 def lookup(query, files, days=30):
     rows = {}
     for pat in files:
@@ -24,16 +39,20 @@ def lookup(query, files, days=30):
             for r in csv.DictReader(open(f, encoding="utf-8")):
                 rows.setdefault(r["id"], r)
     rows = list(rows.values())
+    if not rows:
+        return None
     stamps = [ts._parse(r[k]) for r in rows for k in ("first_seen", "last_seen") if r.get(k)]
     now = max(stamps)
     span = (now - min(stamps)).total_seconds() / 86400
     since = now - timedelta(days=days)
     q = [w for w in pg._tokens(query) if w not in pg._STOP]
+    if not q:
+        return []
     groups, unidentified = collections.defaultdict(list), 0
     for r in rows:
         k = pg.identified_key(r)
-        words = set(pg._tokens(r.get("title", "") + " " + " ".join(k or ())))
-        if not all(w in words or w.rstrip("s") in words for w in q):
+        words = pg._tokens(r.get("title", "") + " " + " ".join(k or ()))
+        if not matches(q, words, pg.variant_of(r)):
             continue
         if k:
             groups[k].append(r)
@@ -61,7 +80,12 @@ def main():
     ap.add_argument("query"); ap.add_argument("--files", nargs="+", required=True)
     ap.add_argument("--days", type=int, default=30); ap.add_argument("--top", type=int, default=3)
     a = ap.parse_args()
-    out, unid, span, now = lookup(a.query, a.files, a.days)
+    res = lookup(a.query, a.files, a.days)
+    if res is None:
+        raise SystemExit(f"No data: no listing found in {a.files} (check the file path)")
+    if res == []:
+        raise SystemExit(f"'{a.query}' has no usable word (only words like 'de', 'la'): give a brand or product name")
+    out, unid, span, now = res
     print(f"'{a.query}': data {now - timedelta(days=span):%Y-%m-%d} to {now:%Y-%m-%d} ({span:.1f} days); "
           f"{len(out)} distinct product(s) match; {unid} matching listings could not be identified and are NOT counted")
     if not out:
@@ -72,7 +96,7 @@ def main():
         print(f"\n== {p['product']}: {len(p['sold'])} confirmed sold in {a.days} days · {p['active']} on sale now "
               f"({p['competition']} competition)"
               + (f" · median asking price at sale €{p['median_price']}" if p["median_price"] is not None else "")
-              + (f" · median time to sell {p['median_days']} days (n={p['n_timed']}, lower bound)" if p["median_days"] is not None else ""))
+              + (f" · median time to sell {p['median_days']} days (n={p['n_timed']}, lower bound)" if p["n_timed"] >= 5 else " · time to sell n/a (too few dated sales)"))
         print(f"   RELIABILITY: {p['reliability']} - {p['why']}")
         if p["variants"]:
             print("   variants: " + "; ".join(f"{v}: {n}" for v, n in p["variants"]))
@@ -81,4 +105,9 @@ def main():
 
 
 if __name__ == "__main__":
+    t = pg._tokens("adidas samba white")
+    assert matches(t, pg._tokens("adidas shoes samba"), "white 37")        # colour is in the variant, not the title
+    assert not matches(t, pg._tokens("adidas shoes samba"), "black 37")
+    assert matches(pg._tokens("tasse"), pg._tokens("tasses"), "")           # singular finds plural
+    assert matches(pg._tokens("blanc 37"), pg._tokens("adidas samba"), "white 37")   # French colour word
     main()
