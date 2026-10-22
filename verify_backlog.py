@@ -31,7 +31,7 @@ tracking = ts.load_tracking(a.file)
 sold_path = a.file + ".sold_ids"
 if os.path.exists(sold_path):
     for i in open(sold_path).read().split():
-        if i in tracking and tracking[i]["status"] != "sold":
+        if i in tracking and (tracking[i]["status"] != "sold" or str(tracking[i]["sale_confirmed"]) != "True"):
             tracking[i]["status"], tracking[i]["sale_confirmed"] = "sold", True
 with open(sold_path, "w") as f:
     f.write("".join(i + "\n" for i, r in tracking.items() if r["status"] == "sold"))

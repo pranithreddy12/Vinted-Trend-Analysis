@@ -1615,7 +1615,7 @@ def verify_disappearances(tracking: dict, path: str, ids: list, workers: int = 2
                     # Else a listing that's live but missing from search is re-verified EVERY
                     # run (missed_runs stays >= DISAPPEARANCE_RUNS), eating the verify cap.
                     row["missed_runs"] = 0
-                else:
+                elif row["status"] != "sold":       # a confirmed sale re-opened for repair keeps its flag
                     row["sale_confirmed"] = False   # unverified — stays "disappeared", not a sale
             tally[outcome] += 1
             done += 1
