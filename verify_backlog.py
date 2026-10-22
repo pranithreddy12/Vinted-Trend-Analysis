@@ -44,7 +44,10 @@ sold = [i for i, r in tracking.items()
         if r["status"] == "sold" and (not r.get("category") or needs_size(r)) and i not in tried]
 order = pg.verification_order(tracking)
 if a.priority:
-    rx = re.compile(a.priority, re.I)
+    try:
+        rx = re.compile(a.priority, re.I)
+    except re.error as e:
+        sys.exit(f"--priority is not a valid pattern ({e}); nothing was checked")
     order = [i for i in order if rx.search(tracking[i]["title"])] + [i for i in order if not rx.search(tracking[i]["title"])]
 ids = (sold + order)[: a.max]
 print(f"{a.file}: {len(tracking)} listings, checking {len(ids)} "
