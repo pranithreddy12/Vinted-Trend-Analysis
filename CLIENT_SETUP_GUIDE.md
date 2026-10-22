@@ -15,8 +15,9 @@ that gets closed or put to sleep.
 one fresh.** Do not unzip on top of the old folder — some file managers skip files that already
 exist instead of overwriting them, which has caused several rounds of "the fix doesn't seem to
 be working" that turned out to be old files still sitting there. If in doubt, extract to a new
-folder and copy your `tracked_keywords.txt` and `vinted_profile` folder (your login) across from
-the old one — see Step 6.
+folder and copy your `tracked_keywords.txt`, your `vinted_profile` folder (your login) **and your
+`tracking` folder** (all your sales history - without it every product starts again from zero)
+across from the old one — see Step 6.
 
 ---
 
