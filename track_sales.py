@@ -1360,8 +1360,11 @@ def _enrich_queue(tracking: dict, cap) -> list:
     sellers vanished before being enriched - so measured time-to-sell skewed slow (client logs
     2026-10-09: 0 of 64 smeg / 0 of 46 owala measured sales under 48h; in local data, sold
     listings WITHOUT a publish time vanished within 48h 29% of the time vs 1% with one)."""
+    # offers_seen_at is set whenever the item page was read: a listing opened once whose age was too
+    # coarse to record ("3 semaines") would otherwise be re-opened every run for nothing
+    # (client log 2026-10-21: 300 queued, 104 new, 46 captured; ~2h40 per product)
     todo = [iid for iid, row in tracking.items()
-            if row["status"] == "active" and not row.get("created_at_ts")]
+            if row["status"] == "active" and not row.get("created_at_ts") and not row.get("offers_seen_at")]
     todo.sort(key=lambda iid: tracking[iid].get("first_seen", ""), reverse=True)
     return todo[: int(cap)] if cap else todo
 
@@ -2246,6 +2249,10 @@ def _demo() -> None:
     assert [b["brand"] for b in br] == ["zara", "nike"], br
     assert br[0]["trend_pct"] == 100 and br[0]["median_sold_price"] == 12.5 and br[0]["top_products"] == "dress: 6 sold", br[0]
     assert br[1]["trend_pct"] is None and br[1]["max_offers_active"] == 13, br[1]
+    q = {"v1": {"status": "active", "first_seen": "2026-10-20", "created_at_ts": "", "offers_seen_at": "2026-10-20"},
+         "v2": {"status": "active", "first_seen": "2026-10-21", "created_at_ts": "", "offers_seen_at": ""},
+         "v3": {"status": "active", "first_seen": "2026-10-19", "created_at_ts": "2026-10-19", "offers_seen_at": ""}}
+    assert _enrich_queue(q, None) == ["v2"]   # opened-but-undatable and already-dated listings are not re-opened
     # a sweep file stamps sales on a few days only (< 5 distinct dates): no trend is invented from them
     coarse = pg.rank_brands([dict(r, last_seen="2026-10-28 00:00:00") for r in brows[:6]], now=datetime(2026, 10, 30, tzinfo=timezone.utc))
     assert coarse[0]["trend_dated"] is False and coarse[0]["trend_pct"] is None, coarse[0]

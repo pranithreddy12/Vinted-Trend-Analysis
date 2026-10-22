@@ -326,6 +326,10 @@ def rank_products(rows, days=30, min_sold=3, now=None):
     now = now or max((ts._parse(r["last_seen"]) for r in rows if r.get("last_seen")),
                      default=datetime.now(timezone.utc))
     since = now - timedelta(days=days)
+    # the file may cover fewer days than the window (a tracker started 19 days ago): a monthly estimate
+    # divides by the days actually covered, as the client reports do, not by the full window
+    firsts = [ts._parse(r["first_seen"]) for r in rows if r.get("first_seen")]
+    covered = min(days, max(1.0, (now - min(firsts)).total_seconds() / 86400)) if firsts else days
     groups, unidentified = collections.defaultdict(list), 0
     for r in rows:
         k = identified_key(r)
@@ -342,7 +346,7 @@ def rank_products(rows, days=30, min_sold=3, now=None):
         prices = [float(r["price"]) for r in sold if r.get("price")]
         life = [v for v in (ts._lifespan_hours(r) for r in sold) if v is not None]
         active = sum(1 for r in g if r["status"] == "active")
-        per_month = len(sold) * 30 / days
+        per_month = len(sold) * 30 / covered
         median_days = (statistics.median(life) / 24) if life else None
         opp = ts.compute_variant_opportunity(per_month, median_days)
         comp = ts.competition_label(active)
