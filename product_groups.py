@@ -122,7 +122,7 @@ def _type_of(w):
     return _TYPE_OF.get(w) or (_TYPE_OF.get(w[:-1]) if len(w) > 3 and w.endswith("s") else None)
 
 
-_BRAND_ALIAS = {"nike air": "nike", "nike sb": "nike", "adidas originals": "adidas", "adidas performance": "adidas"}
+_BRAND_ALIAS = {"nike air": "nike", "nike sb": "nike", "adidas originals": "adidas", "adidas performance": "adidas", "adidas stan smith": "adidas"}
 
 
 def _brand_of(row: dict) -> str:
