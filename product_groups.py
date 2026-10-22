@@ -122,13 +122,16 @@ def _type_of(w):
     return _TYPE_OF.get(w) or (_TYPE_OF.get(w[:-1]) if len(w) > 3 and w.endswith("s") else None)
 
 
+_BRAND_ALIAS = {"nike air": "nike", "nike sb": "nike", "adidas originals": "adidas", "adidas performance": "adidas"}
+
+
 def _brand_of(row: dict) -> str:
     """Lower-cased brand, or '' when there is none or it is a guess. Old rows guessed brand from
     the first title word ("Vintage", "Mug", "Blanc"); those words are never brands here."""
     brand = (row.get("brand") or "").strip().lower()
     if not brand or brand in _NO_BRAND or _type_of(brand) or brand in _STOP or _colour_of(brand):
         return ""
-    return brand
+    return _BRAND_ALIAS.get(brand, brand)
 
 
 def product_key(row: dict):
@@ -292,6 +295,8 @@ def rank_brands(rows, days=30, min_sold=3, now=None, page_brands_only=False):
             continue
         recent = sum(1 for r in sold if ts._parse(r["last_seen"]) >= mid)
         earlier = len(sold) - recent
+        # a sweep file stamps sales on the few days it was swept: with < 5 distinct dates a trend would be invented
+        dated = len({r["last_seen"][:10] for r in sold}) >= 5
         prices = [float(r["price"]) for r in sold if r.get("price")]
         life = [v for v in (ts._lifespan_hours(r) for r in sold) if v is not None]
         active = [r for r in g if r["status"] == "active"]
@@ -300,7 +305,8 @@ def rank_brands(rows, days=30, min_sold=3, now=None, page_brands_only=False):
         out.append({
             "brand": brand,
             "confirmed_sold_30d": len(sold),
-            "trend_pct": round((recent - earlier) * 100 / earlier) if earlier else None,
+            "trend_pct": round((recent - earlier) * 100 / earlier) if earlier and dated else None,
+            "trend_dated": dated,
             "sold_recent_half": recent, "sold_earlier_half": earlier,
             "median_sold_price": round(statistics.median(prices), 2) if prices else "",
             "median_days_to_sell": round(statistics.median(life) / 24, 1) if life else "",
@@ -400,11 +406,15 @@ def main():
         brands = rank_brands(rows, a.days, a.min_sold, page_brands_only=a.page_brands_only)
         if a.sort == "trend":  # 'new' (no sales in the earlier half) first, then by % change
             brands.sort(key=lambda b: (b["trend_pct"] is not None, -(b["trend_pct"] or 0), -b["confirmed_sold_30d"]))
+        stamps = [ts._parse(r["last_seen"]) for r in rows if r.get("last_seen")]
+        if stamps:
+            print(f"data window: {min(stamps):%Y-%m-%d} to {max(stamps):%Y-%m-%d}; a sale is dated by the last sweep that saw the listing")
         print(f"{len(rows)} listings -> {len(brands)} brands with >= {a.min_sold} confirmed sales in {a.days} days")
         for i, b in enumerate(brands[: a.top], 1):
-            tr = "new" if b["trend_pct"] is None else f"{b['trend_pct']:+d}%"
+            tr = "n/a: sale dates too coarse" if not b["trend_dated"] else "new" if b["trend_pct"] is None else f"{b['trend_pct']:+d}%"
+            tts = f"{b['median_days_to_sell']} days to sell (n={b['n_with_posting_date']})" if b["n_with_posting_date"] >= 5 else "time to sell n/a (too few dated sales)"
             print(f"{i:>3}. {b['brand']}: {b['confirmed_sold_30d']} sold (trend {tr}) · median €{b['median_sold_price']}"
-                  f" · {b['median_days_to_sell'] or '?'} days to sell · {b['active_listings']} active"
+                  f" · {tts} · {b['active_listings']} page-checked active"
                   f" · offers max {b['max_offers_active'] if b['max_offers_active'] != '' else '-'}"
                   f"\n     {b['top_products']}")
         _write(a.out, brands)
@@ -413,8 +423,10 @@ def main():
     print(f"{len(rows)} listings -> {ngroups} products (brand + type + colour + size identified); {unid} unidentified (not counted); "
           f"{len(prods)} products with >= {a.min_sold} confirmed sales in {a.days} days")
     for p in prods[: a.top]:
+        tts = (f"{p['median_hours_to_sell']} h to sell (n={p['n_with_posting_date']})"
+               if p["n_with_posting_date"] >= 5 else "time to sell n/a (too few dated sales)")
         print(f"\n{p['product']}: {p['confirmed_sold_30d']} confirmed sold · {p['active_listings']} active · "
-              f"median €{p['median_sold_price']} · {p['median_hours_to_sell']} h to sell (n={p['n_with_posting_date']})"
+              f"median €{p['median_sold_price']} · {tts}"
               f" · competition {p['competition_level']} · score {p['score']}"
               f"{' · ALERT' if p['passes_alert_rule'] else ''}"
               f"\n   variants: {p['variants']}\n   e.g. {p['source_listings']}")

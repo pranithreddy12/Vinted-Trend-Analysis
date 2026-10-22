@@ -2234,7 +2234,7 @@ def _demo() -> None:
     assert zp["variants"] == "black M: 30 sold", zp["variants"]
     # brand ranking: 30-day confirmed sales, trend = recent half vs earlier half, guessed brands ignored
     brows = ([{"id": f"z{i}", "brand": "Zara", "title": "Robe Zara", "status": "sold", "price": str(10 + i),
-               "last_seen": "2026-10-28 00:00:00" if i < 4 else "2026-10-10 00:00:00", "created_at_ts": ""}
+               "last_seen": f"2026-10-{25 + i} 00:00:00" if i < 4 else f"2026-10-{6 + i} 00:00:00", "created_at_ts": ""}
               for i in range(6)]
              + [{"id": f"n{i}", "brand": "Nike", "title": "Baskets Nike", "status": "sold", "price": "40",
                  "last_seen": "2026-10-28 00:00:00", "created_at_ts": ""} for i in range(3)]
@@ -2246,6 +2246,9 @@ def _demo() -> None:
     assert [b["brand"] for b in br] == ["zara", "nike"], br
     assert br[0]["trend_pct"] == 100 and br[0]["median_sold_price"] == 12.5 and br[0]["top_products"] == "dress: 6 sold", br[0]
     assert br[1]["trend_pct"] is None and br[1]["max_offers_active"] == 13, br[1]
+    # a sweep file stamps sales on a few days only (< 5 distinct dates): no trend is invented from them
+    coarse = pg.rank_brands([dict(r, last_seen="2026-10-28 00:00:00") for r in brows[:6]], now=datetime(2026, 10, 30, tzinfo=timezone.utc))
+    assert coarse[0]["trend_dated"] is False and coarse[0]["trend_pct"] is None, coarse[0]
     for r in brows[:3]:
         r["category"] = "Robes"
     assert [b["brand"] for b in pg.rank_brands(brows, now=datetime(2026, 10, 30, tzinfo=timezone.utc),
