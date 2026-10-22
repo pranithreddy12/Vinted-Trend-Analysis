@@ -13,5 +13,8 @@ echo.
 echo --- last 7 days ---
 %PYTHON% check_model_sales.py --list model_checks.txt --hours 168
 echo.
+echo --- last 30 days (the RELIABILITY line says how far to trust it) ---
+%PYTHON% check_model_sales.py --list model_checks.txt --hours 720
+echo.
 echo Results are also saved in model_checks_log.csv - please send me that file.
 pause
