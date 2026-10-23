@@ -7,8 +7,8 @@ so each re-run shows the evolution:
   python check_model_sales.py --list model_checks.txt --hours 168
 
 model_checks.txt, one product per line, '#' comments allowed, fields separated by ';':
-  name ; tracking glob ; brand ; colour ; capacity ; line
-  Stanley Quencher H2.0 40oz pink ; tracking/stanley_*.csv ; stanley ; pink ; 40oz ; Quencher
+  name ; tracking glob ; brand ; colour ; capacity ; line ; exclude (comma-separated title words)
+  Stanley Quencher H2.0 40oz pink ; tracking/stanley_*.csv ; stanley ; pink ; 40oz ; Quencher ; loveshack, barbie
   Smeg cream 500ml ; tracking/smeg_tumbler.csv ; smeg ; cream ; 0.5l ;
 
 Counts rows Vinted confirmed as Sold (status=sold) whose last_seen (~ time of sale) is within
@@ -36,7 +36,7 @@ def reliability(sold, verified, span_days, window_days):
     return "High", f"{sold} confirmed sales, {verified} read on the item page, window covered"
 
 
-def check(files, brand, color="", cap="", line="", hours=48):
+def check(files, brand, color="", cap="", line="", hours=48, exclude=""):
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     rows, seen, stamps = [], set(), []  # stamps: every sighting in the files, not only this product's
     for f in glob.glob(files):
@@ -55,6 +55,8 @@ def check(files, brand, color="", cap="", line="", hours=48):
                 continue
             if line and ts.detect_model(r["title"]).lower() != line.lower():
                 continue
+            if any(x.strip() and x.strip() in r["title"].lower().replace(" ", "") for x in exclude.lower().replace(" ", "").split(",")):
+                continue  # a different product sold under the same line, e.g. a limited-edition collaboration
             rows.append((r, v))
     sold = [(r, v) for r, v in rows if r["status"] == "sold" and r["last_seen"]
             and ts._parse(r["last_seen"]) >= since]
@@ -78,6 +80,7 @@ def main():
     ap.add_argument("--files"); ap.add_argument("--brand")
     ap.add_argument("--color", default=""); ap.add_argument("--cap", default="")
     ap.add_argument("--line", default="", help="product line, e.g. Quencher")
+    ap.add_argument("--exclude", default="", help="comma-separated title words that mean another product")
     ap.add_argument("--hours", type=float, default=48)
     a = ap.parse_args()
 
@@ -86,10 +89,10 @@ def main():
         for ln in open(a.list, encoding="utf-8"):
             p = [x.strip() for x in ln.split(";")]
             if ln.strip() and not ln.lstrip().startswith("#") and len(p) >= 3:
-                p += [""] * (6 - len(p))
-                jobs.append((p[0], p[1], p[2], p[3], p[4], p[5]))
+                p += [""] * (7 - len(p))
+                jobs.append(tuple(p[:7]))
     elif a.files and a.brand:
-        jobs.append((f"{a.brand} {a.cap} {a.color}".strip(), a.files, a.brand, a.color, a.cap, a.line))
+        jobs.append((f"{a.brand} {a.cap} {a.color}".strip(), a.files, a.brand, a.color, a.cap, a.line, a.exclude))
     else:
         ap.error("give --list, or --files and --brand")
 
@@ -100,8 +103,8 @@ def main():
         if new_log:
             w.writerow(["checked_at_utc", "product", "window_hours", "tracked", "active_now",
                         "confirmed_sold", "median_price", "min_price", "max_price", "median_hours_to_sell"])
-        for name, files, brand, color, cap, line in jobs:
-            c = check(files, brand, color, cap, line, a.hours)
+        for name, files, brand, color, cap, line, exclude in jobs:
+            c = check(files, brand, color, cap, line, a.hours, exclude)
             print(f"{name}: {c['tracked']} tracked · {c['active']} active · "
                   f"{c['sold']} confirmed sold in {a.hours:g}h"
                   + (f" · listing price median €{c['median_price']} (€{c['min_price']}–€{c['max_price']})"

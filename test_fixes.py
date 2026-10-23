@@ -62,4 +62,12 @@ assert set(cur) == {"1", "2", "9"} and n["only_in_repaired"] == 1
 assert cur["1"]["status"] == "sold" and cur["1"]["category"] == "Baskets" and cur["1"]["size"] == "37"
 assert cur["2"]["status"] == "sold"            # a sale is never downgraded
 assert cur["9"]["status"] == "active"          # a row only the tracker knows is untouched
+
+# check_models: a limited-edition collaboration is another product, even with a space or a typo in its name
+import check_model_sales as cms
+s = write("s.csv", [row(60 + i, title=t, brand="Stanley", color="Rose", size="", category="Gourdes", seen="2099-01-01 10:00:00")
+                    for i, t in enumerate(["Stanley Quencher H2.0 40oz", "Stanley x LoveShack Fancy Quencher 40oz",
+                                           "Stanley Quencher LoveShakeFancy 40oz"])])
+assert cms.check(s, "stanley", line="Quencher", hours=1e6)["sold"] == 3
+assert cms.check(s, "stanley", line="Quencher", hours=1e6, exclude="loveshack, loveshake")["sold"] == 1
 print("test_fixes OK")
