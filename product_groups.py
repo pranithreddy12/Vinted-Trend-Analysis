@@ -125,12 +125,20 @@ def _type_of(w):
 _BRAND_ALIAS = {"nike air": "nike", "nike sb": "nike", "adidas originals": "adidas", "adidas performance": "adidas", "adidas stan smith": "adidas"}
 
 
+def _real_brand(b: str) -> bool:
+    return bool(b) and b not in _NO_BRAND and not _type_of(b) and b not in _STOP and not _colour_of(b)
+
+
 def _brand_of(row: dict) -> str:
     """Lower-cased brand, or '' when there is none or it is a guess. Old rows guessed brand from
-    the first title word ("Vintage", "Mug", "Blanc"); those words are never brands here."""
+    the first title word ("Vintage", "Mug", "Blanc"); those words are never brands here.
+    A brand read from the photo by the AI (row['ai_brand'], see attach_ai) is used only when the
+    listing has no usable brand of its own."""
     brand = (row.get("brand") or "").strip().lower()
-    if not brand or brand in _NO_BRAND or _type_of(brand) or brand in _STOP or _colour_of(brand):
-        return ""
+    if not _real_brand(brand):
+        brand = (row.get("ai_brand") or "").strip().lower()
+        if not _real_brand(brand):
+            return ""
     return _BRAND_ALIAS.get(brand, brand)
 
 
@@ -214,7 +222,98 @@ def _model_of(row: dict, exclude: str = "", numbers: bool = False) -> str:
                 break
             out.append(w)
         prev_kept = keep
+    if not out and row.get("ai_model"):  # the title names no model: the one the AI read from the photo
+        return _model_of({**row, "title": row["ai_model"], "ai_model": ""}, exclude, numbers)
     return " ".join(out)
+
+
+def attach_ai(rows, cache_dir=None) -> int:
+    """Adds row['ai_brand'] / row['ai_model'] from the photo-AI cache (phase5_cache/vision_*.json), only
+    for high/medium confidence and never for accessories. identified_key uses them ONLY where the listing
+    has no usable brand / no model of its own, and every other part (colour, size, capacity) must still
+    come from the listing. Returns how many rows got an AI identity (0 when the AI was never switched on)."""
+    import glob, json
+    ident = {}
+    for f in glob.glob(os.path.join(cache_dir or os.environ.get("VINTED_CLIP_CACHE", "phase5_cache"), "vision_*.json")):
+        try:
+            with open(f, encoding="utf-8") as fh:
+                ident.update(json.load(fh))
+        except (OSError, ValueError):
+            pass
+    n = 0
+    for r in rows:
+        v = ident.get(str(r.get("id")))
+        if isinstance(v, dict) and not v.get("is_accessory") and v.get("confidence") in ("high", "medium"):
+            r["ai_brand"] = v.get("brand") or ""
+            r["ai_model"] = v.get("product_line") or v.get("official_name") or ""
+            n += 1
+    return n
+
+
+# Words that praise or date a listing without naming the product ("Jellycat retired rare").
+_MODEL_NOISE = {"retired", "rare", "edition", "limited", "limitee", "limitée", "collection", "collector",
+                "authentic", "authentique", "official", "officiel", "officielle", "boxed", "occasion",
+                "excellent", "tag", "tags", "label", "etiquette", "livraison", "envoi", "vendu", "reserve",
+                "réservé", "bundle", "lot", "pack", "dupe", "cadeau", "gift", "ans", "mois", "jusqu", "bis",
+                "monat", "jahre", "months", "years", "month", "year", "age", "baby", "bebe", "bébé",
+                "couleur", "color", "colour", "colore", "farbe", "soft", "toy", "jouet", "neuf", "neuve", "tbe", "new"}
+
+
+def _stem(w: str) -> str:
+    return w[:-1] if len(w) > 4 and w.endswith("s") else w
+
+
+def _name_tokens(row: dict, btoks: set) -> list:
+    """Title words that can be part of a model name: no brand, colour, size, number, type, filler."""
+    title = (row.get("title") or "").lower().replace("t-shirt", "tshirt").replace("t shirt", "tshirt")
+    return [_stem(w) for w in _tokens(title)
+            if len(w) > 2 and w not in btoks and w not in _STOP and w not in _MODEL_FILLER and w not in _MODEL_NOISE
+            and not _colour_of(w) and not _SIZE_RE.match(w) and not any(c.isdigit() for c in w) and not _type_of(w)]
+
+
+def model_namer(rows, min_count: int = 8, min_rows: int = 30, default_brand: str = ""):
+    """Returns f(row) -> the MODEL NAME the title gives, for brands that have >= min_rows listings.
+    f(row) is None when the row's brand is too small to learn from (caller keeps its old grouping)
+    and '' when the title names no model (the listing is not counted as a product).
+    A model is the commonest word, or pair of adjacent words (either order), that this brand's titles
+    repeat in >= min_count listings: "Malachy Dragon", "Amuseables Croissant", "Samba". A pair beats
+    a single word, so "Sky Dragon" and "Snow Dragon" stay two products. Learned per brand from the
+    file itself, so it works for any brand without a hand-made list."""
+    def brand_of(r):  # a row with no usable brand still belongs to the file's own brand when its title says so
+        return _brand_of(r) or (default_brand if default_brand and default_brand in (r.get("title") or "").lower() else "")
+
+    by_brand = collections.defaultdict(list)
+    for r in rows:
+        b = brand_of(r)
+        if b:
+            by_brand[b].append(_name_tokens(r, set(_tokens(b))))
+    vocab = {}
+    for b, cands in by_brand.items():
+        if len(cands) < min_rows:
+            continue
+        uni, bi, shown = collections.Counter(), collections.Counter(), collections.defaultdict(collections.Counter)
+        for c in cands:
+            uni.update(set(c))
+            for p in {(x, y) for x, y in zip(c, c[1:]) if x != y}:
+                key = tuple(sorted(p))
+                bi[key] += 1
+                shown[key][" ".join(p)] += 1
+        vocab[b] = (uni, bi, shown)
+
+    def namer(row):
+        b = brand_of(row)
+        if b not in vocab:
+            return None
+        uni, bi, shown = vocab[b]
+        c = _name_tokens(row, set(_tokens(b)))
+        pairs = [tuple(sorted(p)) for p in {(x, y) for x, y in zip(c, c[1:]) if x != y}]
+        pairs = [p for p in pairs if bi[p] >= min_count]
+        if pairs:
+            return shown[max(pairs, key=lambda p: bi[p])].most_common(1)[0][0].title()
+        words = [w for w in set(c) if uni[w] >= min_count]
+        return max(words, key=lambda w: uni[w]).title() if words else ""
+    namer.active = bool(vocab)  # False when no brand has enough listings to learn from
+    return namer
 
 
 def _volume_ml(title: str) -> int:
@@ -330,11 +429,14 @@ def rank_products(rows, days=30, min_sold=3, now=None):
     # divides by the days actually covered, as the client reports do, not by the full window
     firsts = [ts._parse(r["first_seen"]) for r in rows if r.get("first_seen")]
     covered = min(days, max(1.0, (now - min(firsts)).total_seconds() / 86400)) if firsts else days
-    groups, unidentified = collections.defaultdict(list), 0
+    groups, unidentified, ai_ids = collections.defaultdict(list), 0, set()
     for r in rows:
         k = identified_key(r)
         if k:
             groups[k].append(r)
+            # identified only thanks to the photo AI (the listing's own brand/title was not enough)?
+            if (r.get("ai_brand") or r.get("ai_model")) and not identified_key({**r, "ai_brand": "", "ai_model": ""}):
+                ai_ids.add(r["id"])
         else:
             unidentified += 1
     out = []
@@ -364,6 +466,7 @@ def rank_products(rows, days=30, min_sold=3, now=None):
             "verdict": opp["verdict"],
             "passes_alert_rule": per_month >= 30 and comp != "High" and opp["score"] >= 70,
             "unverified_disappeared": sum(1 for r in g if r["status"] == "disappeared"),
+            "ai_identified_listings": sum(1 for r in g if r["id"] in ai_ids),
             "variants": "; ".join(f"{v}: {n} sold" for v, n in collections.Counter(variant_of(r) for r in sold).most_common(6)),
             "source_listings": " ".join("https://www.vinted.fr/items/" + r["id"] for r in sold[:3]),
         })
@@ -401,6 +504,9 @@ def main():
         print("no category sweep files found (tracked_keywords.txt cat: lines / tracking/*.csv); nothing to do")
         return
     rows = [r for f in files for r in csv.DictReader(open(f, encoding="utf-8"))]
+    n_ai = attach_ai(rows)
+    if n_ai:
+        print(f"photo AI: {n_ai} listings have an AI identity; it fills a missing brand or model only (counted as 'AI-identified')")
     if a.category:
         want = [c.lower() for c in a.category]
         total = len(rows)
@@ -433,6 +539,7 @@ def main():
               f"median €{p['median_sold_price']} · {tts}"
               f" · competition {p['competition_level']} · score {p['score']}"
               f"{' · ALERT' if p['passes_alert_rule'] else ''}"
+              f"{' · ' + str(p['ai_identified_listings']) + ' AI-identified' if p['ai_identified_listings'] else ''}"
               f"\n   variants: {p['variants']}\n   e.g. {p['source_listings']}")
     print(f"\n{sum(p['passes_alert_rule'] for p in prods)} of {len(prods)} products pass the alert rule "
           "(>=30 confirmed sales/30d, competition not High, score >=70)")

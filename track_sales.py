@@ -554,6 +554,8 @@ def product_display_name(model: str, base: str, brand: str = "Stanley") -> str:
     parts = base.split()
     cap = parts[0] if parts else ""
     colour = " ".join(parts[1:]).title() if len(parts) > 1 else ""
+    if len(parts) == 1 and not canonical_capacity(cap):  # colour only ("brown"): not a capacity
+        cap, colour = "", cap.title()
     cap_disp = f"{cap} ({_CAP_METRIC[cap]})" if cap in _CAP_METRIC else cap
     bits = [brand]
     if model:
@@ -575,6 +577,12 @@ _NOOP_SIZES = {"", "one size", "onesize", "one-size", "one size fits all", "uniq
 def _real_size(size: str) -> str:
     s = (size or "").strip()
     return "" if s.lower() in _NOOP_SIZES else s
+
+
+# Vinted's size list for toys is baby clothing ("Prématuré, jusqu'à 44cm", "3 ans / 98 cm", "bis 44"):
+# sellers pick any, so on a plush it only splits one product into pieces.
+_AGE_SIZE = re.compile(r"mois|monat|month|\bans?\b|jahr|year|jusqu|\bbis\b|up to|fr[üu]hchen|pr[ée]matur|preemie|newborn|"
+                       r"naissance|nacimiento|\bcm\b|\d\s?m\b", re.I)
 
 
 def build_variant(title: str, brand: str, color: str, size: str = "") -> str:
@@ -880,6 +888,33 @@ def _sold_within_days(row: dict, now: datetime, days: int = 30) -> bool:
         return False
 
 
+def _wants_model_names(tracking: dict, slug: str = "") -> bool:
+    """True for a file of ONE brand whose products have no capacity and no clothing size (plush: Jellycat):
+    there the model name read from the titles is the only thing that tells two products apart. Bottles
+    (capacity), clothes (size) and mixed category sweeps keep their own grouping. Only brands listed in
+    VINTED_MODEL_NAME_BRANDS (default "jellycat"; "*" = any brand that passes the test) use it: titles of
+    appliance brands such as Smeg name dozens of models and would split the bottle ranking into pieces."""
+    allowed = [b.strip().lower() for b in os.environ.get("VINTED_MODEL_NAME_BRANDS", "jellycat").split(",") if b.strip()]
+    if "*" not in allowed and (slug or "").split("_")[0].lower() not in allowed:
+        return False
+    brands, structured, total = collections.Counter(), 0, 0
+    for r in tracking.values():
+        b = (r.get("brand") or "").strip().lower()
+        if b:
+            brands[b] += 1
+        size = r.get("size", "")
+        base = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""), "")
+        if not base:
+            continue
+        total += 1
+        if canonical_capacity(base.split()[0]) or (_real_size(size) and not _AGE_SIZE.search(size)
+                                                  and build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""), size) != base):
+            structured += 1
+    top = brands.most_common(1)
+    return (bool(top) and top[0][1] >= 30 and top[0][1] >= 0.5 * sum(brands.values())
+            and total >= 30 and structured < 0.3 * total)
+
+
 def variant_analysis(
     tracking: dict,
     now: datetime | None = None,
@@ -934,11 +969,38 @@ def variant_analysis(
         base: votes.most_common(1)[0][0] for base, votes in model_votes.items()
     }
 
+    # Brands without a hand-made line list (Jellycat; others via VINTED_MODEL_NAME_BRANDS): the model name is
+    # learned from the brand's own titles (client 2026-10-24: "Jellycat brown" hides the real product). A listing
+    # whose title names no model is not counted as a product, as for every other identification rule.
+    try:
+        import product_groups
+        namer = (product_groups.model_namer(list(tracking.values()), default_brand=brand.lower())
+                 if _wants_model_names(tracking, slug) else None)
+    except Exception:
+        namer = None
+    no_model = 0
+
+    # a row with no brand of its own follows its file: the Stanley line patterns only apply in a Stanley file
+    file_is_stanley = not slug or "stanley" in slug.lower()
+    stanley_row = lambda r: _is_stanley(r) and (file_is_stanley or "stanley" in (r.get("brand") or "").lower())
+
     groups = {}
     for r in tracking.values():
-        base = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""), r.get("size", ""))
+        size = r.get("size", "")
+        model = None if not namer or stanley_row(r) else namer(r)
+        if model is not None and _AGE_SIZE.search(size or ""):
+            size = ""  # a baby-clothes size ("Prématuré, jusqu'à 44cm") on a soft toy tells nothing
+        base = build_variant(r.get("title", ""), r.get("brand", ""), r.get("color", ""), size)
         if base:
-            model = _row_model(r) or dominant_model.get(base, "") if _is_stanley(r) else ""
+            if stanley_row(r):
+                model = _row_model(r) or dominant_model.get(base, "")
+            elif canonical_capacity(base.split()[0]):
+                model = ""  # capacity + colour keeps its own grouping (bottles)
+            elif namer and namer.active and not model:
+                no_model += 1  # no model in the title (or a brand too small to learn from): not counted
+                continue
+            else:
+                model = model or ""
             v = f"{model.lower()} {base}".strip() if model else base
         else:
             # Phase 5 fallback: no text variant — group by what the PHOTO shows.
@@ -1009,6 +1071,8 @@ def variant_analysis(
         except ValueError:
             pass
 
+    if no_model:
+        print(f"   {no_model} listings name no model in their title: left out of the product ranking")
     out = []
     for v, g in groups.items():
         # Verified — real confirmed sales in the trailing 30 days, not an extrapolated rate

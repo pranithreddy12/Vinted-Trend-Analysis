@@ -41,6 +41,7 @@ def lookup(query, files, days=30):
     rows = list(rows.values())
     if not rows:
         return None
+    pg.attach_ai(rows)  # photo-AI brand/model, used only where the listing's own brand/title gives none
     stamps = [ts._parse(r[k]) for r in rows for k in ("first_seen", "last_seen") if r.get(k)]
     now = max(stamps)
     span = (now - min(stamps)).total_seconds() / 86400
@@ -65,7 +66,9 @@ def lookup(query, files, days=30):
         life = [h for h in (ts._lifespan_hours(r) for r in sold) if h is not None]
         active = sum(1 for r in g if r["status"] == "active")
         level, why = reliability(len(sold), sum(1 for r in sold if r.get("category")), span, days)
-        out.append({"product": " ".join(k), "sold": sold, "active": active, "listings": len(g),
+        ai = sum(1 for r in g if (r.get("ai_brand") or r.get("ai_model"))
+                 and not pg.identified_key({**r, "ai_brand": "", "ai_model": ""}))  # identified only thanks to the photo AI
+        out.append({"product": " ".join(k), "ai": ai, "sold": sold, "active": active, "listings": len(g),
                     "median_price": round(statistics.median(prices), 2) if prices else None,
                     "median_days": round(statistics.median(life) / 24, 1) if life else None, "n_timed": len(life),
                     "competition": ts.competition_label(active),
@@ -98,6 +101,8 @@ def main():
               + (f" · median asking price at sale €{p['median_price']}" if p["median_price"] is not None else "")
               + (f" · median time to sell {p['median_days']} days (n={p['n_timed']}, lower bound)" if p["n_timed"] >= 5 else " · time to sell n/a (too few dated sales)"))
         print(f"   RELIABILITY: {p['reliability']} - {p['why']}")
+        if p["ai"]:
+            print(f"   {p['ai']} of its {p['listings']} listings were identified with the photo AI (not from their title)")
         if p["variants"]:
             print("   variants: " + "; ".join(f"{v}: {n}" for v, n in p["variants"]))
         for r in sorted(p["sold"], key=lambda r: r["last_seen"])[:30]:

@@ -30,6 +30,9 @@ REM Verify a disappearance against the real Vinted page before counting it as a 
 set VINTED_VERIFY_SOLD=1
 REM Opportunity ranking + alerts (no extra cost).
 set VINTED_DISCOVER=1
+REM Brands ranked by the exact MODEL NAME read from the titles ("Jellycat Sky Dragon") instead of by colour alone.
+REM Comma-separated brand words (the first word of the keyword); add a brand here to switch it on.
+set VINTED_MODEL_NAME_BRANDS=jellycat
 
 REM ---- Optional AI features (OFF by default - each spends your own Anthropic budget) ----
 REM Cleared explicitly so a stray "setx VINTED_VISION 1" can never silently turn AI spend on.
@@ -54,14 +57,17 @@ set "RAN="
 2>nul (
   9>"%~dp0run_tracker.lock" call :main
 )
+set "MAIN_RC=%errorlevel%"
 if not defined RAN (
   echo [%date% %time%] previous run still in progress - this start skipped >> "logs\skipped_starts.log"
   echo A previous tracker run is still in progress - this start is skipped.
+  exit /b 0
 )
-exit /b 0
+exit /b %MAIN_RC%
 
 :main
 set "RAN=1"
+if exist LOGIN_EXPIRED.txt del LOGIN_EXPIRED.txt
 
 if not exist tracked_keywords.txt (
   echo [%date% %time%] ERROR: tracked_keywords.txt not found
@@ -90,6 +96,7 @@ REM priority at least once every 2 cycles regardless of how far any one cycle ge
 %PYTHON% rotate_watchlist.py tracked_keywords.txt > tracked_keywords.rotated.txt
 
 setlocal enabledelayedexpansion
+set "lo=0"
 for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt") do (
   set "kw=%%k"
 
@@ -135,6 +142,7 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt")
         )
       )
       echo [!date! !time!] END   category !cat_id! !cat_name! - exit code !rc! >> "%LOGFILE%"
+      if "!rc!"=="2" (set /a lo+=1) else (set "lo=0")
       set "VINTED_CATALOG_ID="
       set "VINTED_CATEGORY_NAME="
     ) else (
@@ -152,8 +160,10 @@ for /f "usebackq eol=# tokens=* delims=" %%k in ("tracked_keywords.rotated.txt")
         )
       )
       echo [!date! !time!] END   "!kw!" - exit code !rc! >> "%LOGFILE%"
+      if "!rc!"=="2" (set /a lo+=1) else (set "lo=0")
     )
   )
+  if !lo! GEQ 2 goto :login_expired
   timeout /t 30 >nul
 )
 echo [!date! !time!] START product discovery >> "%LOGFILE%"
@@ -164,6 +174,15 @@ endlocal
 echo [%date% %time%] === run complete === >> "%LOGFILE%"
 echo [%date% %time%] === run complete ===
 exit /b 0
+
+:login_expired
+REM Two products in a row were "Not logged in": Vinted ended the session of the tracker's Chrome. Going on
+REM would only repeat it for every product and end with "run complete" while nothing was collected.
+echo [!date! !time!] === RUN STOPPED: Vinted login expired. NOTHING was collected. Run start_scraper.bat, log OUT of Vinted, log back IN, then the next scheduled run resumes. === >> "%LOGFILE%"
+echo [!date! !time!] === RUN STOPPED: Vinted login expired. NOTHING was collected. Run start_scraper.bat, log OUT of Vinted, log back IN. ===
+echo Vinted login expired at !date! !time!. Run start_scraper.bat, log OUT of Vinted, then log back IN. > LOGIN_EXPIRED.txt
+endlocal
+exit /b 3
 
 :restart_chrome
 REM Close ONLY the tracker's Chrome (the one using vinted_profile), then start it fresh.

@@ -70,4 +70,30 @@ s = write("s.csv", [row(60 + i, title=t, brand="Stanley", color="Rose", size="",
                                            "Stanley Quencher LoveShakeFancy 40oz"])])
 assert cms.check(s, "stanley", line="Quencher", hours=1e6)["sold"] == 3
 assert cms.check(s, "stanley", line="Quencher", hours=1e6, exclude="loveshack, loveshake")["sold"] == 1
+# model names learned from a brand's own titles; a listing without one is not counted (client 2026-10-24)
+jr = [row(100 + i, title=t, brand="Jellycat", color="Marron", size="", category="Peluches", category_path="Enfants > Jouets")
+      for i, t in enumerate(["Jellycat Amuseable Croissant"] * 12 + ["Jellycat Bashful Bunny"] * 12 + ["Jellycat peluche"] * 16)]
+nm = pg.model_namer(jr)
+assert nm(jr[0]) == "Amuseable Croissant" and nm(jr[12]) == "Bashful Bunny" and nm(jr[30]) == "", (nm(jr[0]), nm(jr[12]), nm(jr[30]))
+assert nm(row(1, brand="Zara")) is None and pg.model_namer(jr[:5]).active is False   # small brand / small file: old grouping
+jt = {r["id"]: r for r in jr}
+for r in jt.values():
+    r.update(size="Prématuré, jusqu'à 44cm", first_seen="2026-09-25 10:00:00")
+vs, _ = ts.variant_analysis(jt, slug="jellycat_test")
+assert {v["variant"] for v in vs} == {"amuseable croissant brown", "bashful bunny brown"}, [v["variant"] for v in vs]
+assert vs[0]["product"] in ("Jellycat Amuseable Croissant Brown", "Jellycat Bashful Bunny Brown"), vs[0]["product"]
+
+# photo AI: fills a missing brand / model only, never overrides the listing, never low confidence or accessories
+import json
+cd = os.path.join(D, "cache"); os.makedirs(cd)
+json.dump({"1": {"brand": "Adidas", "product_line": "Samba OG", "confidence": "medium"},
+           "2": {"brand": "Adidas", "product_line": "Samba OG", "confidence": "low"},
+           "3": {"brand": "Adidas", "product_line": "Samba OG", "confidence": "high", "is_accessory": True}},
+          open(os.path.join(cd, "vision_t.json"), "w"))
+ai = [row(i, title="Baskets blanches", brand="Pas de marque", color="Blanc", size="38") for i in (1, 2, 3, 4)]
+assert pg.attach_ai(ai, cd) == 1 and ai[0]["ai_brand"] == "Adidas" and "ai_brand" not in ai[1]
+assert pg.identified_key(ai[0]) == ("adidas", "shoes", "samba og"), pg.identified_key(ai[0])
+assert pg.identified_key(ai[1]) is None and pg.identified_key(ai[2]) is None and pg.identified_key(ai[3]) is None
+own = row(5, title="Nike Pegasus 40 blanc", brand="Nike", color="Blanc", size="38"); own.update(ai_brand="Adidas", ai_model="Samba")
+assert pg.identified_key(own)[0] == "nike" and "pegasus" in pg.identified_key(own)[2]   # the listing's own data wins
 print("test_fixes OK")

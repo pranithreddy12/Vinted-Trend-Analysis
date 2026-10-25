@@ -64,13 +64,15 @@ shutil.copyfile("CLIENT_SETUP_GUIDE.md", f"{OUT}/CLIENT_SETUP_GUIDE.md")
 # keyword list: the current one plus the client's four categories as commented lines to fill in
 kw = open("tracked_keywords.txt", encoding="utf-8").read().rstrip() + """
 
-# ---- Your four priority categories (added 2026-10-22) -----------------------------------------
-# To switch one on: open the category on vinted.fr, copy the number that follows "catalog[]=" (or
-# "/catalog/") in the address bar, replace <ID> below, and delete the # at the start of the line.
-#cat:<ID> women athletic shoes
-#cat:<ID> women facial care
-#cat:<ID> home kitchenware
-#cat:<ID> home pans
+# ---- Your four priority categories, one line per Vinted subcategory (numbers read on vinted.fr, 2026-10-25) ----
+# Vinted shows only the ~960 newest listings per country for each line, so each subcategory gets its own line.
+# A line also covers all the subcategories below it (2630 includes running, fitness, tennis... shoes).
+cat:948 women facial care
+cat:2630 women sport shoes
+cat:2632 women sneakers
+cat:3508 home pans
+cat:3507 home saucepans
+cat:3477 home kitchen tools
 """
 crlf(f"{OUT}/src/tracked_keywords.txt", kw)
 counts = {n: snapshot(n) for n in REPAIRED}
@@ -108,7 +110,15 @@ This package replaces the one you have. **Your sales history and your Vinted log
   reliability level.
 - The tracker no longer re-opens the same listings every run (it was wasting about two thirds of the
   time spent capturing publish times).
-- Your four priority categories can be switched on (step 5).
+- Your four priority categories are already in `tracked_keywords.txt`, one line per subcategory (step 5).
+- **Exact model names:** products are now ranked by the model name read from the titles ("Jellycat Sky Dragon
+  Brown"), not by colour alone. A listing whose title names no model is left out ("not counted").
+- **A logged-out run now stops and says so:** if two products in a row find Vinted logged out, the run stops, the
+  log ends with "RUN STOPPED: Vinted login expired", the file `LOGIN_EXPIRED.txt` appears and Task Scheduler shows
+  an error. Before, the run went through every product and ended with "run complete" having collected nothing.
+- **Photo AI (stays OFF until you switch it on):** when it is on, a listing whose brand or model is missing in the
+  title can be identified from its photo (medium or high confidence only; never the size, capacity or colour you
+  entered). Such listings are labelled "AI-identified" in the results.
 
 ## Steps (about 20 minutes)
 1. **Stop the Task Scheduler task** (right-click it, End, then Disable). Never update while it runs.
@@ -121,17 +131,19 @@ This package replaces the one you have. **Your sales history and your Vinted log
 4. In the new `src` folder, double-click **`apply_repairs.bat`**. It adds our verified details to your
    tracking files (each file is first saved as `<name>.before_merge.csv`). Then open a Command Prompt in
    `src` and run `python test_fixes.py` and `python track_sales.py --selftest`: each must end with OK.
-5. **Your four categories:** open `tracked_keywords.txt`, find "Your four priority categories", and for each line
-   replace `<ID>` with the number after `catalog[]=` in the Vinted address bar when you open that category,
-   then remove the `#` at the start of the line.
+5. **Your four categories:** the six lines are already in `tracked_keywords.txt` (near the bottom, "Your four
+   priority categories"). If you copied your own `tracked_keywords.txt` in step 3, add those six lines to it.
+   The first runs take longer because there are more sweeps; after the first day send me the newest log from `logs`
+   and I will tell you, for each subcategory, how many listings were seen and whether Vinted's limit was reached.
 6. In Task Scheduler, point the task's action to the **new** `src\\run_tracker.bat`, enable it, and run
    `run_tracker.bat` once by hand. Check the newest file in `logs` for `=== run complete ===`.
 7. Keep the old folder for a week, then delete it.
 
 ## What to expect
 - Numbers on your Smeg and Stanley products will match our report only after step 4.
-- Vinted ends the login session every few hours. If a run shows many pages as "logged out", log in again with
-  `start_scraper.bat`.
+- Vinted ends the login session every few hours. If the log ends with "RUN STOPPED: Vinted login expired" (or the
+  file `LOGIN_EXPIRED.txt` appears), run `start_scraper.bat`, **log out of Vinted and then log in again**; the next
+  scheduled run resumes by itself. Logging in on top of the old session does not work.
 - Trend and time to sell appear after a few days of runs. Offers (13+) are collected for listings checked
   1 to 3 days after they appear.
 """)
