@@ -339,6 +339,29 @@ def variant_of(row: dict) -> str:
     return " ".join(x for x in _variant_parts(row) if x) or "-"
 
 
+# Stanley sells several product LINES and limited-edition collaborations under one brand: a Quencher is not a
+# ProTour, and a LoveShackFancy is another (dearer) product. Checked in this order on the title with spaces,
+# hyphens and underscores removed ("Pro Tour" = "protour"); a title naming none has no line.
+_STANLEY_LINES = (
+    ("collab", ("loveshack", "loveshake", "barbie", "oliviarodrigo", "labubu", "lululemon", "starbucks")),
+    ("protour", ("protour",)), ("aerolight", ("aerolight",)), ("flip straw", ("flipstraw", "flipjet")),
+    ("iceflow", ("iceflow",)), ("adventure", ("adventure",)), ("go", ("gotumbler", "goquencher")),
+    ("classic", ("classic", "legendary")), ("quencher", ("quencher", "flowstate", "h2.0", "h20", "h2o")))
+
+
+# things sold FOR a Stanley (bag, lid, sleeve) or several at once: never a sale of one tumbler
+_STANLEY_NOT_A_TUMBLER = re.compile(r"tas voor|tasche|deckel|ersatz|couvercle de rechange|replacement|sleeve|pochette|housse"
+                                    r"|[ée]tui|holder|porte-gobelet|\bbags?\b|\bsacs?\b|\blotes?\b|lot de|set de 2|\b2x\b|\bx2\b|\bduo\b")
+
+
+def _stanley_line(title: str) -> str:
+    low = (title or "").lower()
+    if _STANLEY_NOT_A_TUMBLER.search(low):
+        return "accessory"
+    t = re.sub(r"[\s_\-]", "", low)
+    return next((name for name, words in _STANLEY_LINES if any(w in t for w in words)), "")
+
+
 def identified_key(row: dict):
     """The product key when the listing is fully identified for its family, else None (unidentified,
     never counted). shoes: brand + model, with colour AND size. face care: brand + type + product name,
@@ -349,6 +372,10 @@ def identified_key(row: dict):
         return None
     brand, typ = k
     title, fam = row.get("title", ""), _family(row)
+    if brand == "stanley" and _stanley_line(title):
+        # a Stanley with a named line is one product whichever Vinted category the seller picked
+        # (Gourdes / Verres / Tasses / even kitchen tools): brand + line, with colour AND capacity
+        return (brand, "tumbler", _stanley_line(title)) if all(_variant_parts(row)) else None
     if fam == "shoes":
         model = _model_of(row, numbers=True)
         return (brand, "shoes", model) if model and all(_variant_parts(row)) else None

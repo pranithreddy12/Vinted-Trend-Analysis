@@ -105,6 +105,8 @@ def main():
             print(f"   {p['ai']} of its {p['listings']} listings were identified with the photo AI (not from their title)")
         if p["variants"]:
             print("   variants: " + "; ".join(f"{v}: {n}" for v, n in p["variants"]))
+            if len(p["variants"]) > 1:
+                print("   (these variants are different colours/sizes: add one to the name, e.g. 'pink 40oz', to count only that one)")
         for r in sorted(p["sold"], key=lambda r: r["last_seen"])[:30]:
             print(f"   {r['last_seen'][:10]}  €{r['price']:>7}  {r['title'][:50]}  https://www.vinted.fr/items/{r['id']}")
 

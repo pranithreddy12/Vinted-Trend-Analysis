@@ -96,4 +96,17 @@ assert pg.identified_key(ai[0]) == ("adidas", "shoes", "samba og"), pg.identifie
 assert pg.identified_key(ai[1]) is None and pg.identified_key(ai[2]) is None and pg.identified_key(ai[3]) is None
 own = row(5, title="Nike Pegasus 40 blanc", brand="Nike", color="Blanc", size="38"); own.update(ai_brand="Adidas", ai_model="Samba")
 assert pg.identified_key(own)[0] == "nike" and "pegasus" in pg.identified_key(own)[2]   # the listing's own data wins
+# Stanley: a Quencher, a collaboration, a ProTour and a bag are four different things, whatever Vinted category the seller chose
+def st(i, title, cat="Gourdes", path="Maison > Arts de la table > Gourdes"):
+    return row(i, title=title, brand="Stanley", color="Rose", size="", category=cat, category_path=path)
+sr = [st(200, "Stanley Quencher H2.0 40oz"), st(201, "Stanley Quencher H2.0 40oz", "Verres", "Maison > Arts de la table > Verres"),
+      st(202, "Stanley x LoveShack Fancy Quencher 40oz"), st(203, "Quencher ProTour 40oz"), st(204, "Stanley Tasche All Day Quencher 40oz"),
+      st(205, "Stanley Quencher 40oz", "Tasses et cuillères à mesurer", "Maison > Outils de cuisine > Tasses et cuillères à mesurer")]
+keys = [pg.identified_key(r) for r in sr]
+assert keys[0] == keys[1] == keys[5] == ("stanley", "tumbler", "quencher"), keys   # same product in three Vinted categories
+assert keys[2] == ("stanley", "tumbler", "collab") and keys[3] == ("stanley", "tumbler", "protour") and keys[4] == ("stanley", "tumbler", "accessory"), keys
+assert pg._stanley_line("Lot de 2 gourdes Stanley") == "accessory" and pg._stanley_line("Stanley baguette cup") == ""
+sf = write("st.csv", sr)
+res = lp.lookup("stanley quencher rose", [sf])[0]
+assert {p["product"]: len(p["sold"]) for p in res} == {"stanley tumbler quencher": 3, "stanley tumbler collab": 1, "stanley tumbler protour": 1, "stanley tumbler accessory": 1}, [p["product"] for p in res]
 print("test_fixes OK")

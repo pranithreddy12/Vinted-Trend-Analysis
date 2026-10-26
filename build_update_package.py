@@ -154,6 +154,7 @@ Open a Command Prompt in the `src` folder and run, for example:
     python lookup_product.py "adidas samba" --files tracking\\women.csv
     python lookup_product.py "adidas samba white 37" --files tracking\\women.csv
     python lookup_product.py "tupperware" --files tracking\\home.csv --days 30
+    python lookup_product.py "stanley quencher pink 40oz" --files tracking\\stanley_quencher.csv
 
 You give a **name** (brand, product, and optionally a colour or a size). You get, for each distinct product:
 confirmed sales over the last 30 days, how many are for sale now, the competition level, the median asking
@@ -161,6 +162,9 @@ price at sale, the Vinted link of every sale, and a **reliability level (Low / M
 
 How to read it
 - Several different products can match one name: each is shown on its own and never added to another.
+  For Stanley, the Quencher, the ProTour, the other lines, the limited-edition collaborations (LoveShackFancy,
+  Barbie...) and accessories (bags, lids, lots) are separate products.
+- When a product shows several variants (colours or sizes), add one to the name ("pink 40oz") to count only that one.
 - Listings that match the name but could not be identified are counted and shown, not used.
 - Reliability is **Low** when your files cover fewer days than the window or when there are fewer than 5 sales.
   It is **High** only with 20+ confirmed sales, the window covered, and most sales read on the item page.
